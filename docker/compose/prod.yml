@@ -1,0 +1,67 @@
+# Production Docker Compose Configuration
+# For VPS deployment
+
+services:
+  # NGINX Manager API
+  nginx-manager-api:
+    build:
+      context: ../..
+      dockerfile: docker/api/Dockerfile
+    container_name: nginx-manager-api
+    ports:
+      - "127.0.0.1:8000:8000"  # Only bind to localhost
+    volumes:
+      # Persistent configuration and data
+      - /etc/nginx/conf.d:/etc/nginx/conf.d
+      - /etc/ssl:/etc/ssl
+      - /var/log/nginx-manager:/var/log/nginx-manager
+      - /var/backups/nginx:/var/backups/nginx
+      # SSL certificates from Let's Encrypt
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    environment:
+      - API_DEBUG=false
+      - API_RELOAD=false
+      - NGINX_CONF_DIR=/etc/nginx/conf.d
+      - NGINX_CONTAINER_NAME=nginx-manager-nginx
+      - LOG_LEVEL=INFO
+      - VALIDATE_BEFORE_DEPLOY=true
+      - AUTO_BACKUP=true
+    networks:
+      - nginx-manager
+    depends_on:
+      - nginx-manager-nginx
+    restart: unless-stopped
+    # Security: run as non-root user
+    user: "1000:1000"
+
+  # NGINX Web Server
+  nginx-manager-nginx:
+    build:
+      context: ../nginx
+      dockerfile: Dockerfile
+    container_name: nginx-manager-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Production configuration directories
+      - /etc/nginx/conf.d:/etc/nginx/conf.d
+      - /etc/ssl:/etc/ssl
+      - /var/log/nginx:/var/log/nginx
+      # SSL certificates
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    networks:
+      - nginx-manager
+    restart: unless-stopped
+    # Health check for production monitoring
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  nginx-manager:
+    driver: bridge
+    name: nginx-manager-network
