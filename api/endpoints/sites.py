@@ -10,7 +10,7 @@ from typing import List, Dict, Any
 import logging
 
 from config import get_nginx_conf_path, settings
-from core.config_manager.parser import nginx_parser
+from core.config_manager import nginx_parser, ConfigAdapter
 from models.config import SiteConfigResponse, ApiResponse
 
 logger = logging.getLogger(__name__)
@@ -101,8 +101,9 @@ async def list_sites() -> List[SiteConfigResponse]:
             try:
                 parsed_config = nginx_parser.parse_config_file(conf_file)
                 if parsed_config:
-                    # Convert to response model
-                    site_response = SiteConfigResponse(**parsed_config)
+                    # Convert to response model via adapter
+                    rich_dict = ConfigAdapter.to_rich_dict(parsed_config)
+                    site_response = SiteConfigResponse(**rich_dict)
                     sites.append(site_response)
                 else:
                     logger.warning(f"Failed to parse config file: {conf_file}")
@@ -214,9 +215,10 @@ async def get_site(site_name: str) -> SiteConfigResponse:
                 status_code=500,
                 detail=f"Failed to parse configuration file for site '{site_name}'"
             )
-        
-        # Convert to response model
-        site_response = SiteConfigResponse(**parsed_config)
+
+        # Convert to response model via adapter
+        rich_dict = ConfigAdapter.to_rich_dict(parsed_config)
+        site_response = SiteConfigResponse(**rich_dict)
         
         logger.info(f"Successfully retrieved configuration for site: {site_name}")
         return site_response

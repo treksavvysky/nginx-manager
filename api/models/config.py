@@ -83,7 +83,7 @@ class SiteConfig(BaseModel):
 
 class SiteConfigResponse(BaseModel):
     """Response model for site configuration with additional metadata."""
-    
+
     name: str = Field(..., description="Unique identifier for this site configuration")
     server_name: Optional[str] = Field(None, description="NGINX server_name directive")
     listen_ports: List[int] = Field(default_factory=list, description="Ports this site listens on")
@@ -92,13 +92,30 @@ class SiteConfigResponse(BaseModel):
     proxy_pass: Optional[str] = Field(None, description="Upstream URL for reverse proxy")
     has_ssl_cert: bool = Field(default=False, description="Whether SSL certificate is configured")
     status: ConfigStatus = Field(default=ConfigStatus.UNTESTED, description="Config validation status")
-    
+
     # File metadata
     file_path: str = Field(..., description="Full path to the configuration file")
     file_size: int = Field(..., description="Size of the configuration file in bytes")
     created_at: Optional[datetime] = Field(None, description="When the file was created")
     updated_at: Optional[datetime] = Field(None, description="When the file was last modified")
     last_validated: Optional[datetime] = Field(None, description="When this config was last validated")
+
+    # Rich fields (optional, for enhanced consumers)
+    server_names: Optional[List[str]] = Field(
+        None, description="All server_name values as a list"
+    )
+    locations: Optional[List[Dict[str, Any]]] = Field(
+        None, description="Location blocks with proxy_pass, root, headers"
+    )
+    upstreams: Optional[List[Dict[str, Any]]] = Field(
+        None, description="Upstream definitions with servers"
+    )
+    ssl_config: Optional[Dict[str, Any]] = Field(
+        None, description="Detailed SSL configuration"
+    )
+    parse_errors: Optional[List[Dict[str, Any]]] = Field(
+        None, description="Parse errors with line numbers"
+    )
 
 
 class ConfigValidationResult(BaseModel):

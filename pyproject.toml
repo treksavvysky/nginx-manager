@@ -14,4 +14,12 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-multipart>=0.0.6",
     "uvicorn[standard]>=0.24.0",
+    "crossplane>=0.5.8",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+pythonpath = ["api"]
