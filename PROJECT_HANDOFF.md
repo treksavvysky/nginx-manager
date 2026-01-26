@@ -1,8 +1,8 @@
 # NGINX Manager - Project Handoff Document
 
-**Date:** August 1, 2025  
-**Version:** 0.1.0  
-**Status:** MVP Complete, Production Deployed  
+**Date:** January 2026
+**Version:** 0.1.0
+**Status:** MVP Complete (Phase 1), Production Deployed
 **Repository:** https://github.com/treksavvysky/nginx-manager  
 
 ---
@@ -162,93 +162,28 @@ NGINX Manager is an AI-agent-first REST API for managing NGINX web server config
 
 ## 🚀 Project Roadmap & Next Steps
 
-### **Phase 1: Core API Expansion (v0.2.0) - Priority: HIGH**
-**Estimated Timeline: 2-3 weeks**
+For detailed feature breakdowns, see [ROADMAP.md](docs/ROADMAP.md).
 
-#### **Configuration Management APIs**
-- [ ] `POST /sites/` - Create new NGINX site configurations
-- [ ] `PUT /sites/{name}` - Update existing site configurations  
-- [ ] `DELETE /sites/{name}` - Remove site configurations
-- [ ] `POST /sites/{name}/validate` - Test configuration syntax before applying
-- [ ] `POST /sites/{name}/reload` - Hot-reload specific site without full restart
+| Version | Phase | Focus | Priority |
+|---------|-------|-------|----------|
+| v0.2.0 | Phase 2 | AI-Native Core (transactions, rich context, parser upgrade, CRUD, MCP design) | HIGH |
+| v0.3.0 | Phase 3 | SSL Management + MCP Server Implementation | HIGH |
+| v0.4.0 | Phase 4 | GPT Integration + Agent Workflows | HIGH |
+| v0.5.0 | Phase 5 | Authentication & Security | MEDIUM |
+| v0.6.0 | Phase 6 | Web Dashboard | MEDIUM |
+| v1.0.0 | Phase 7 | Multi-server, Monitoring, Production Hardening | MEDIUM |
 
-#### **Enhanced Data Models**
-- [ ] **Configuration Templates** - Predefined patterns for common setups
-- [ ] **Validation Rules** - Comprehensive NGINX syntax validation
-- [ ] **Change Tracking** - Configuration history and rollback capabilities
-- [ ] **Batch Operations** - Multiple site operations in single API call
+### **Next Phase: AI-Native Core (v0.2.0)**
 
-#### **Error Handling & Validation**
-- [ ] **Detailed Error Responses** - Specific validation failure messages
-- [ ] **Configuration Backup** - Automatic backup before modifications
-- [ ] **Rollback Mechanisms** - Restore previous working configurations
-- [ ] **Dry-Run Mode** - Preview changes without applying
+Key deliverables for the next development phase:
 
-### **Phase 2: SSL Automation (v0.3.0) - Priority: HIGH**
-**Estimated Timeline: 2-4 weeks**
-
-#### **Let's Encrypt Integration**
-- [ ] **Automatic Certificate Generation** - Domain validation and cert creation
-- [ ] **Certificate Renewal** - Background renewal with expiration monitoring
-- [ ] **Multi-Domain Support** - SAN certificates for multiple subdomains
-- [ ] **DNS Challenge Support** - Alternative validation methods
-
-#### **Certificate Management**
-- [ ] **Certificate Store** - Centralized cert storage and organization
-- [ ] **Expiration Monitoring** - Alerts and notifications for renewal
-- [ ] **Certificate APIs** - REST endpoints for cert lifecycle management
-- [ ] **Security Best Practices** - Automated security header configuration
-
-### **Phase 3: Persistent Storage (v0.4.0) - Priority: MEDIUM**
-**Estimated Timeline: 2-3 weeks**
-
-#### **Database Integration**
-- [ ] **PostgreSQL Backend** - Persistent storage for configurations and metadata
-- [ ] **Migration System** - Database schema versioning and updates
-- [ ] **Configuration History** - Full audit trail of all changes
-- [ ] **Performance Optimization** - Caching and query optimization
-
-#### **Data Models**
-- [ ] **Site Configurations** - Structured storage of NGINX configs
-- [ ] **SSL Certificates** - Certificate metadata and renewal tracking
-- [ ] **User Management** - Multi-user support with role-based permissions
-- [ ] **Activity Logging** - Comprehensive audit trail
-
-### **Phase 4: Web Dashboard (v0.5.0) - Priority: MEDIUM**
-**Estimated Timeline: 3-4 weeks**
-
-#### **Frontend Development**
-- [ ] **React/Vue.js Dashboard** - Modern web interface for configuration management
-- [ ] **Visual Config Builder** - Drag-and-drop configuration creation
-- [ ] **Real-time Monitoring** - Live traffic and performance metrics
-- [ ] **Mobile-Responsive Design** - Full functionality on all devices
-
-#### **User Experience**
-- [ ] **Configuration Wizards** - Guided setup for common scenarios
-- [ ] **Validation Feedback** - Real-time syntax checking and error highlighting
-- [ ] **Performance Analytics** - Traffic patterns and response time analysis
-- [ ] **Alert Management** - Notification system for issues and renewals
-
-### **Phase 5: Production Hardening (v1.0.0) - Priority: MEDIUM**
-**Estimated Timeline: 2-3 weeks**
-
-#### **Security & Authentication**
-- [ ] **JWT Authentication** - Secure API access with token-based auth
-- [ ] **Role-Based Access Control** - Multi-user permissions and restrictions
-- [ ] **API Rate Limiting** - Protection against abuse and DoS attacks
-- [ ] **Security Headers** - Comprehensive security policy enforcement
-
-#### **Monitoring & Observability**
-- [ ] **Prometheus Metrics** - Detailed application and system metrics
-- [ ] **Grafana Dashboards** - Visual monitoring and alerting
-- [ ] **Structured Logging** - JSON-formatted logs with correlation IDs
-- [ ] **Health Check Enhancements** - Deep health monitoring with dependencies
-
-#### **Scalability & Performance**
-- [ ] **Redis Caching** - Configuration and metadata caching
-- [ ] **Database Connection Pooling** - Optimized database performance
-- [ ] **Horizontal Scaling** - Multi-instance deployment support
-- [ ] **Load Testing** - Performance validation under high load
+- **Parser Upgrade**: Replace regex parser with `crossplane` for reliable NGINX parsing—prerequisite for AI trust
+- **Transaction & Event Model**: Every change creates a transaction with before/after state, automatic rollback capability
+- **Rich Context Responses**: All responses include system state, suggestions, and warnings
+- **Predictive Operations**: Dry-run mode (`?dry_run=true`) on all mutation endpoints with diff preview
+- **Site CRUD**: POST/PUT/DELETE for `/sites/` endpoints, following AI-native patterns
+- **NGINX Control**: Reload, restart, test endpoints with health verification
+- **MCP Interface Design**: Design MCP resources, tools, and prompts schema (implementation in Phase 3)
 
 ---
 
@@ -316,12 +251,15 @@ nginx-manager/
 ## 🎯 Success Criteria for Next Phase
 
 ### **Definition of Done for v0.2.0**
-1. **Full CRUD API** - Complete configuration management via REST endpoints
-2. **Configuration Validation** - Syntax checking before applying changes
-3. **Hot Reload Support** - Configuration updates without service interruption
-4. **Comprehensive Testing** - Unit and integration test coverage >80%
-5. **Updated Documentation** - OpenAPI schema reflects all new endpoints
-6. **Production Deployment** - Successful deployment and validation on VPS
+1. **Reliable Parser** - `crossplane`-based parser handling all common NGINX directives
+2. **Transaction Model** - Every mutation creates rollback checkpoint, `GET /events/` endpoint
+3. **Rich Context** - All responses include state, suggestions, and warnings fields
+4. **Predictive Operations** - `?dry_run=true` support on all mutation endpoints
+5. **Full CRUD API** - POST/PUT/DELETE for sites with AI-native response patterns
+6. **NGINX Control** - Reload/restart/test endpoints with health verification
+7. **MCP Design Doc** - Complete MCP interface design document for Phase 3 implementation
+8. **Comprehensive Testing** - Unit and integration test coverage >80%
+9. **Updated Documentation** - OpenAPI schema reflects AI-native patterns
 
 ### **Key Metrics to Track**
 - **API Response Times** - Maintain sub-100ms for read operations
@@ -337,8 +275,10 @@ nginx-manager/
 1. **Review codebase** - Understand current architecture and patterns
 2. **Set up development environment** - Clone repo and run `./scripts/dev-deploy.sh`
 3. **Test API endpoints** - Verify all current functionality works correctly
-4. **Plan v0.2.0 features** - Create detailed specifications for CRUD operations
-5. **Begin POST endpoint development** - Start with `/sites/` creation endpoint
+4. **Integrate crossplane** - Replace regex parser with `crossplane` library
+5. **Implement transaction model** - Add snapshot/rollback infrastructure
+6. **Design response schema** - Define rich context response format (state, suggestions, warnings)
+7. **Begin CRUD with AI patterns** - Implement `/sites/` CRUD following new response format
 
 ### **Infrastructure Tasks**
 1. **Monitor production deployment** - Ensure VPS environment remains stable
