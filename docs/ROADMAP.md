@@ -84,11 +84,11 @@ This phase establishes the foundation for reliable AI agent interaction. The par
 - [ ] `warnings` field for non-blocking issues (e.g., "SSL cert expires in 7 days")
 
 ### 2.4 Predictive Operations
-- [ ] `?dry_run=true` query parameter on all mutation endpoints
-- [ ] Diff output showing before/after for config changes
-- [ ] Validation warnings (not just errors) in dry-run responses
+- [x] `?dry_run=true` query parameter on all mutation endpoints
+- [x] Diff output showing before/after for config changes
+- [x] Validation warnings (not just errors) in dry-run responses
 - [ ] Confidence indicators for complex operations
-- [ ] Impact analysis: what services/sites will be affected
+- [x] Impact analysis: what services/sites will be affected
 
 ### 2.5 Site CRUD (with AI Patterns)
 - [x] `POST /sites/` - Create new site configuration (static or reverse_proxy)

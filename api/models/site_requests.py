@@ -248,3 +248,74 @@ class SiteDeleteResponse(BaseModel):
         default=False,
         description="Whether NGINX was reloaded"
     )
+
+
+class ValidationWarning(BaseModel):
+    """A non-blocking warning about a configuration."""
+
+    code: str = Field(..., description="Warning code (e.g., 'missing_index')")
+    message: str = Field(..., description="Human-readable warning message")
+    suggestion: Optional[str] = Field(None, description="How to fix the warning")
+
+
+class DryRunDiff(BaseModel):
+    """Shows what would change in a dry-run operation."""
+
+    operation: str = Field(..., description="Operation type: create, update, delete, enable, disable")
+    file_path: str = Field(..., description="Path to the config file that would be affected")
+    current_content: Optional[str] = Field(None, description="Current file content (for update/delete)")
+    new_content: Optional[str] = Field(None, description="New file content (for create/update)")
+    lines_added: int = Field(default=0, description="Number of lines that would be added")
+    lines_removed: int = Field(default=0, description="Number of lines that would be removed")
+
+
+class DryRunResult(BaseModel):
+    """
+    Result of a dry-run operation.
+
+    Shows what would happen if the operation were executed,
+    without actually making any changes.
+    """
+
+    dry_run: bool = Field(default=True, description="Always true for dry-run responses")
+    would_succeed: bool = Field(..., description="Whether the operation would succeed")
+    operation: str = Field(..., description="Operation that would be performed")
+    message: str = Field(..., description="Summary of what would happen")
+
+    # Validation
+    validation_passed: bool = Field(
+        default=True,
+        description="Whether NGINX config validation would pass"
+    )
+    validation_output: Optional[str] = Field(
+        None,
+        description="Output from nginx -t validation"
+    )
+
+    # Warnings (non-blocking issues)
+    warnings: List[ValidationWarning] = Field(
+        default_factory=list,
+        description="Non-blocking warnings about the configuration"
+    )
+
+    # What would change
+    diff: Optional[DryRunDiff] = Field(
+        None,
+        description="Details of what would change"
+    )
+
+    # Impact analysis
+    affected_sites: List[str] = Field(
+        default_factory=list,
+        description="Sites that would be affected by this operation"
+    )
+    reload_required: bool = Field(
+        default=True,
+        description="Whether NGINX reload would be needed"
+    )
+
+    # For create/update operations
+    generated_config: Optional[str] = Field(
+        None,
+        description="The NGINX config that would be generated"
+    )

@@ -11,8 +11,9 @@ for audit logging and rollback capability.
 import logging
 import time
 from datetime import datetime
+from typing import Union
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from config import settings
 from core.docker_service import (
@@ -29,6 +30,7 @@ from models.nginx import (
     NginxStatusResponse,
     NginxConfigTestResult,
     NginxProcessStatus,
+    NginxDryRunResult,
 )
 from models.transaction import OperationType
 
@@ -69,13 +71,17 @@ def _handle_docker_error(e: DockerServiceError) -> HTTPException:
 
 @router.post(
     "/reload",
-    response_model=NginxOperationResult,
+    response_model=Union[NginxOperationResult, NginxDryRunResult],
     summary="Reload NGINX Configuration",
     description="""
 Perform a graceful NGINX reload (nginx -s reload).
 
 This sends a signal to NGINX to gracefully reload its configuration without
 dropping existing connections. Perfect for applying configuration changes.
+
+**Dry Run Mode:**
+Add `?dry_run=true` to validate configuration and preview the operation
+without actually reloading NGINX.
 
 **What happens:**
 1. NGINX master process receives reload signal
@@ -92,15 +98,54 @@ If health check fails after reload, previous configuration is restored.
 **AI Agent Usage:** Call this after modifying site configurations to apply changes.
 """,
     responses={
-        200: {"description": "Reload completed (check 'success' field for result)"},
+        200: {"description": "Reload completed or dry run result"},
         503: {"description": "NGINX container not available"}
     }
 )
-async def reload_nginx() -> NginxOperationResult:
+async def reload_nginx(
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+) -> Union[NginxOperationResult, NginxDryRunResult]:
     """Gracefully reload NGINX configuration."""
     start_time = time.time()
 
     try:
+        # Get current state for dry run check
+        status = await docker_service.get_container_status()
+        current_state = status.get("status", "unknown")
+        container_running = status.get("running", False)
+
+        # Dry run mode: validate config and return preview
+        if dry_run:
+            # Test configuration
+            config_valid = True
+            config_test_output = None
+            warnings = []
+
+            try:
+                success, stdout, stderr = await docker_service.test_config()
+                config_valid = success
+                config_test_output = stderr or stdout
+            except DockerServiceError as e:
+                config_valid = False
+                config_test_output = e.message
+                warnings.append(f"Cannot test config: {e.message}")
+
+            if not container_running:
+                warnings.append("NGINX container is not running")
+
+            return NginxDryRunResult(
+                would_succeed=config_valid and container_running,
+                operation="reload",
+                message="Would perform graceful NGINX reload" if config_valid else "Reload would fail due to invalid configuration",
+                current_state=current_state,
+                container_running=container_running,
+                config_valid=config_valid,
+                config_test_output=config_test_output,
+                would_drop_connections=False,
+                estimated_downtime_ms=0,
+                warnings=warnings
+            )
+
         async with transactional_operation(
             operation=OperationType.NGINX_RELOAD,
             resource_type="nginx",
@@ -232,10 +277,13 @@ async def reload_nginx() -> NginxOperationResult:
 
 @router.post(
     "/restart",
-    response_model=NginxOperationResult,
+    response_model=Union[NginxOperationResult, NginxDryRunResult],
     summary="Restart NGINX Container",
     description="""
 Perform a full NGINX container restart.
+
+**Dry Run Mode:**
+Add `?dry_run=true` to preview the operation without actually restarting.
 
 **WARNING:** This is a disruptive operation that will:
 - Stop the NGINX container
@@ -250,23 +298,62 @@ or when NGINX is in an inconsistent state).
 **AI Agent Usage:** Only use when reload fails or NGINX needs a full restart.
 """,
     responses={
-        200: {"description": "Restart completed (check 'success' field for result)"},
+        200: {"description": "Restart completed or dry run result"},
         503: {"description": "NGINX container not available"}
     }
 )
-async def restart_nginx() -> NginxOperationResult:
+async def restart_nginx(
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+) -> Union[NginxOperationResult, NginxDryRunResult]:
     """Full restart of NGINX container."""
     start_time = time.time()
 
     try:
+        # Get current state
+        status = await docker_service.get_container_status()
+        current_state = status.get("status", "unknown")
+        container_running = status.get("running", False)
+
+        # Dry run mode: validate config and return preview
+        if dry_run:
+            # Test configuration
+            config_valid = True
+            config_test_output = None
+            warnings = [
+                "This operation will drop all active connections",
+                "Consider using /nginx/reload for configuration changes"
+            ]
+
+            try:
+                success, stdout, stderr = await docker_service.test_config()
+                config_valid = success
+                config_test_output = stderr or stdout
+                if not success:
+                    warnings.append("Configuration is invalid - container may fail to start")
+            except DockerServiceError as e:
+                config_valid = False
+                config_test_output = e.message
+                warnings.append(f"Cannot test config: {e.message}")
+
+            return NginxDryRunResult(
+                would_succeed=container_running,  # Can only restart if container exists
+                operation="restart",
+                message="Would perform full NGINX container restart (DISRUPTIVE)",
+                current_state=current_state,
+                container_running=container_running,
+                config_valid=config_valid,
+                config_test_output=config_test_output,
+                would_drop_connections=True,
+                estimated_downtime_ms=3000,  # Estimate ~3 seconds for restart
+                warnings=warnings
+            )
+
         async with transactional_operation(
             operation=OperationType.NGINX_RESTART,
             resource_type="nginx",
             resource_id="nginx"
         ) as ctx:
-            # Get current state
-            status = await docker_service.get_container_status()
-            previous_state = status.get("status", "unknown")
+            previous_state = current_state
 
             # Perform restart
             await docker_service.restart_container(timeout=10)

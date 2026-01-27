@@ -15,6 +15,75 @@ This document provides detailed API documentation for NGINX Manager.
 - API Key via `X-API-Key` header
 - JWT Bearer token for web dashboard
 
+## Dry-Run Mode (Preview Operations)
+
+All mutation endpoints support a `?dry_run=true` query parameter that previews the operation without making any changes. This is essential for AI agents that need to validate operations before execution.
+
+### How it Works
+
+1. Add `?dry_run=true` to any mutation endpoint (POST, PUT, DELETE)
+2. The system validates the request and simulates the operation
+3. Returns a detailed preview including:
+   - Whether the operation would succeed
+   - The generated configuration (for create/update)
+   - A diff showing what would change
+   - Validation results from `nginx -t`
+   - Warnings about potential issues
+
+### Dry-Run Response Format
+
+```json
+{
+  "dry_run": true,
+  "would_succeed": true,
+  "operation": "create",
+  "message": "Would create site 'mysite.com' with 15 lines of configuration",
+  "validation_passed": true,
+  "validation_output": "nginx: configuration file test is successful",
+  "warnings": [],
+  "diff": {
+    "operation": "create",
+    "file_path": "/etc/nginx/conf.d/mysite.com.conf",
+    "current_content": null,
+    "new_content": "server { ... }",
+    "lines_added": 15,
+    "lines_removed": 0
+  },
+  "affected_sites": ["mysite.com"],
+  "reload_required": true,
+  "generated_config": "server {\n    listen 80;\n    server_name mysite.com;\n    ...\n}"
+}
+```
+
+### NGINX Control Dry-Run
+
+For `/nginx/reload` and `/nginx/restart`, dry-run validates configuration and shows impact:
+
+```json
+{
+  "dry_run": true,
+  "would_succeed": true,
+  "operation": "reload",
+  "message": "Would perform graceful NGINX reload",
+  "current_state": "running",
+  "container_running": true,
+  "config_valid": true,
+  "config_test_output": "nginx: configuration file test is successful",
+  "would_drop_connections": false,
+  "estimated_downtime_ms": 0,
+  "warnings": []
+}
+```
+
+### Use Cases
+
+- **Validation**: Check if a configuration change would be valid before applying
+- **Impact Analysis**: See what files would be modified and how
+- **AI Agent Safety**: Allow agents to preview operations and get user confirmation
+- **Debugging**: See generated configs without applying them
+
+---
+
 ## Endpoints
 
 ### Health & Status
@@ -130,6 +199,9 @@ Get a specific site configuration.
 #### POST /sites/
 Create a new site configuration.
 
+**Query Parameters**:
+- `dry_run` (optional): Preview operation without making changes (default: false)
+
 **Request Body**:
 ```json
 {
@@ -179,6 +251,7 @@ Update an existing site configuration.
 
 **Parameters**:
 - `site_name` (path): Name of the site to update
+- `dry_run` (query, optional): Preview operation without making changes (default: false)
 
 **Request Body** (all fields optional):
 ```json
@@ -215,6 +288,7 @@ Delete a site configuration.
 **Parameters**:
 - `site_name` (path): Name of the site to delete
 - `auto_reload` (query, optional): Reload NGINX after deletion (default: false)
+- `dry_run` (query, optional): Preview operation without making changes (default: false)
 
 **Response**:
 ```json
@@ -236,6 +310,7 @@ Enable a disabled site (renames `.conf.disabled` back to `.conf`).
 
 **Parameters**:
 - `site_name` (path): Name of the site to enable
+- `dry_run` (query, optional): Preview operation without making changes (default: false)
 
 **Request Body** (optional):
 ```json
@@ -267,6 +342,7 @@ Disable a site without deleting it (renames `.conf` to `.conf.disabled`).
 
 **Parameters**:
 - `site_name` (path): Name of the site to disable
+- `dry_run` (query, optional): Preview operation without making changes (default: false)
 
 **Request Body** (optional):
 ```json
@@ -332,6 +408,9 @@ Validate all NGINX configuration files with `nginx -t`.
 #### POST /nginx/reload
 Graceful NGINX reload with health verification. Creates a transaction for audit and rollback.
 
+**Query Parameters**:
+- `dry_run` (optional): Preview operation and validate config without reloading (default: false)
+
 **Auto-Rollback:** If health check fails after reload, configuration is automatically rolled back to the previous state (when `AUTO_ROLLBACK_ON_FAILURE=true`, which is the default).
 
 **Response (success)**:
@@ -371,6 +450,9 @@ Graceful NGINX reload with health verification. Creates a transaction for audit 
 
 #### POST /nginx/restart
 Full NGINX container restart with health verification. Creates a transaction for audit and rollback.
+
+**Query Parameters**:
+- `dry_run` (optional): Preview operation without restarting (default: false)
 
 **Response**:
 ```json

@@ -6,8 +6,9 @@ Supports full CRUD operations with transaction support for rollback.
 """
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 import logging
 import shutil
 import tempfile
@@ -25,6 +26,9 @@ from models.site_requests import (
     SiteMutationResponse,
     SiteDeleteResponse,
     SiteType,
+    DryRunResult,
+    DryRunDiff,
+    ValidationWarning,
 )
 from models.transaction import OperationType
 
@@ -253,7 +257,7 @@ async def get_site(site_name: str) -> SiteConfigResponse:
 
 @router.post(
     "/",
-    response_model=SiteMutationResponse,
+    response_model=Union[SiteMutationResponse, DryRunResult],
     status_code=201,
     summary="Create New Site Configuration",
     description="""
@@ -266,6 +270,10 @@ async def get_site(site_name: str) -> SiteConfigResponse:
     - `static`: Serves static files from a root directory
     - `reverse_proxy`: Proxies requests to a backend server
 
+    **Dry Run Mode:**
+    Add `?dry_run=true` to preview the operation without making changes.
+    Returns the generated config, validation result, and what would change.
+
     **Transaction Support:**
     All changes are wrapped in a transaction for potential rollback.
     A snapshot is automatically created before writing the new configuration.
@@ -275,21 +283,26 @@ async def get_site(site_name: str) -> SiteConfigResponse:
     Default is `false` to allow batching multiple changes.
     """,
     responses={
+        200: {"description": "Dry run result (when dry_run=true)"},
         201: {"description": "Site created successfully"},
         400: {"description": "Invalid configuration or validation failed"},
         409: {"description": "Site with this name already exists"},
         500: {"description": "Internal server error during creation"}
     }
 )
-async def create_site(request: SiteCreateRequest) -> SiteMutationResponse:
+async def create_site(
+    request: SiteCreateRequest,
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+) -> Union[SiteMutationResponse, DryRunResult]:
     """
     Create a new NGINX site configuration.
 
     Args:
         request: Site creation request with configuration details
+        dry_run: If True, preview the operation without making changes
 
     Returns:
-        SiteMutationResponse: Result of the creation operation
+        SiteMutationResponse or DryRunResult depending on dry_run flag
 
     Raises:
         HTTPException: If creation fails for any reason
@@ -299,6 +312,14 @@ async def create_site(request: SiteCreateRequest) -> SiteMutationResponse:
 
     # Check if site already exists
     if conf_file.exists():
+        if dry_run:
+            return DryRunResult(
+                would_succeed=False,
+                operation="create",
+                message=f"Site '{request.name}' already exists",
+                validation_passed=False,
+                affected_sites=[request.name]
+            )
         raise HTTPException(
             status_code=409,
             detail=f"Site '{request.name}' already exists"
@@ -307,9 +328,103 @@ async def create_site(request: SiteCreateRequest) -> SiteMutationResponse:
     # Also check for disabled version
     disabled_file = conf_dir / f"{request.name}.conf.disabled"
     if disabled_file.exists():
+        if dry_run:
+            return DryRunResult(
+                would_succeed=False,
+                operation="create",
+                message=f"Site '{request.name}' exists but is disabled. Enable it or delete it first.",
+                validation_passed=False,
+                affected_sites=[request.name]
+            )
         raise HTTPException(
             status_code=409,
             detail=f"Site '{request.name}' exists but is disabled. Enable it or delete it first."
+        )
+
+    # Generate configuration
+    try:
+        generator = get_config_generator()
+        config_content = generator.generate(request)
+    except ConfigGeneratorError as e:
+        if dry_run:
+            return DryRunResult(
+                would_succeed=False,
+                operation="create",
+                message=f"Failed to generate configuration: {e.message}",
+                validation_passed=False,
+                affected_sites=[request.name]
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to generate configuration: {e.message}"
+        )
+
+    # Validate configuration
+    validation_passed = True
+    validation_output = None
+    warnings: List[ValidationWarning] = []
+
+    if settings.validate_before_deploy:
+        # Write to temp file and validate
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            suffix='.conf',
+            delete=False
+        ) as tmp_file:
+            tmp_file.write(config_content)
+            tmp_path = Path(tmp_file.name)
+
+        try:
+            # Copy to conf.d temporarily for validation
+            shutil.copy(tmp_path, conf_file)
+            success, stdout, stderr = await docker_service.test_config()
+            validation_output = stderr or stdout
+            if not success:
+                validation_passed = False
+                # Remove temporary config
+                conf_file.unlink(missing_ok=True)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+            if dry_run:
+                # Clean up the temp config we created for validation
+                conf_file.unlink(missing_ok=True)
+
+    # Generate warnings
+    if request.site_type == SiteType.STATIC and not request.root_path:
+        warnings.append(ValidationWarning(
+            code="missing_root",
+            message="Static site without root_path specified",
+            suggestion="Set root_path to the document root directory"
+        ))
+
+    # If dry_run, return preview result
+    if dry_run:
+        lines = config_content.count('\n') + 1
+        return DryRunResult(
+            would_succeed=validation_passed,
+            operation="create",
+            message=f"Would create site '{request.name}' with {lines} lines of configuration",
+            validation_passed=validation_passed,
+            validation_output=validation_output,
+            warnings=warnings,
+            diff=DryRunDiff(
+                operation="create",
+                file_path=str(conf_file),
+                current_content=None,
+                new_content=config_content,
+                lines_added=lines,
+                lines_removed=0
+            ),
+            affected_sites=[request.name],
+            reload_required=True,
+            generated_config=config_content
+        )
+
+    # Actual creation (not dry run)
+    if not validation_passed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Configuration validation failed: {validation_output}"
         )
 
     async with transactional_operation(
@@ -318,40 +433,8 @@ async def create_site(request: SiteCreateRequest) -> SiteMutationResponse:
         resource_id=request.name
     ) as ctx:
         try:
-            # Generate configuration
-            generator = get_config_generator()
-            config_content = generator.generate(request)
-
-            # Write to temporary file first for validation
-            with tempfile.NamedTemporaryFile(
-                mode='w',
-                suffix='.conf',
-                delete=False
-            ) as tmp_file:
-                tmp_file.write(config_content)
-                tmp_path = Path(tmp_file.name)
-
-            try:
-                # Validate the configuration if nginx -t is available
-                if settings.validate_before_deploy:
-                    # Copy to conf.d temporarily for validation
-                    shutil.copy(tmp_path, conf_file)
-                    success, stdout, stderr = await docker_service.test_config()
-                    if not success:
-                        # Remove invalid config
-                        conf_file.unlink(missing_ok=True)
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Configuration validation failed: {stderr}"
-                        )
-                else:
-                    # Just copy without validation
-                    shutil.copy(tmp_path, conf_file)
-
-            finally:
-                # Clean up temp file
-                tmp_path.unlink(missing_ok=True)
-
+            # Write the config (already validated above)
+            conf_file.write_text(config_content)
             logger.info(f"Created site configuration: {conf_file}")
 
             # Optionally reload NGINX
@@ -375,12 +458,6 @@ async def create_site(request: SiteCreateRequest) -> SiteMutationResponse:
                 enabled=True
             )
 
-        except ConfigGeneratorError as e:
-            logger.error(f"Config generation failed: {e.message}")
-            raise HTTPException(
-                status_code=400,
-                detail=f"Failed to generate configuration: {e.message}"
-            )
         except HTTPException:
             raise
         except Exception as e:
@@ -393,13 +470,16 @@ async def create_site(request: SiteCreateRequest) -> SiteMutationResponse:
 
 @router.put(
     "/{site_name}",
-    response_model=SiteMutationResponse,
+    response_model=Union[SiteMutationResponse, DryRunResult],
     summary="Update Site Configuration",
     description="""
     Update an existing NGINX site configuration.
 
     This endpoint modifies the configuration for an existing site.
     Only provided fields will be updated; others remain unchanged.
+
+    **Dry Run Mode:**
+    Add `?dry_run=true` to preview the changes without applying them.
 
     **Transaction Support:**
     A snapshot of the current configuration is created before modification.
@@ -409,38 +489,157 @@ async def create_site(request: SiteCreateRequest) -> SiteMutationResponse:
     Set `auto_reload: true` to automatically reload NGINX after update.
     """,
     responses={
-        200: {"description": "Site updated successfully"},
+        200: {"description": "Site updated successfully (or dry run result)"},
         400: {"description": "Invalid configuration or validation failed"},
         404: {"description": "Site not found"},
         500: {"description": "Internal server error during update"}
     }
 )
-async def update_site(site_name: str, request: SiteUpdateRequest) -> SiteMutationResponse:
+async def update_site(
+    site_name: str,
+    request: SiteUpdateRequest,
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+) -> Union[SiteMutationResponse, DryRunResult]:
     """
     Update an existing site configuration.
 
     Args:
         site_name: Name of the site to update
         request: Update request with new configuration values
+        dry_run: If True, preview the operation without making changes
 
     Returns:
-        SiteMutationResponse: Result of the update operation
+        SiteMutationResponse or DryRunResult depending on dry_run flag
     """
     conf_dir = get_nginx_conf_path()
     conf_file = conf_dir / f"{site_name}.conf"
 
     # Check if site exists
     if not conf_file.exists():
-        # Check if disabled
         disabled_file = conf_dir / f"{site_name}.conf.disabled"
         if disabled_file.exists():
+            if dry_run:
+                return DryRunResult(
+                    would_succeed=False,
+                    operation="update",
+                    message=f"Site '{site_name}' is disabled. Enable it before updating.",
+                    validation_passed=False,
+                    affected_sites=[site_name]
+                )
             raise HTTPException(
                 status_code=400,
                 detail=f"Site '{site_name}' is disabled. Enable it before updating."
             )
+        if dry_run:
+            return DryRunResult(
+                would_succeed=False,
+                operation="update",
+                message=f"Site '{site_name}' not found",
+                validation_passed=False,
+                affected_sites=[site_name]
+            )
         raise HTTPException(
             status_code=404,
             detail=f"Site '{site_name}' not found"
+        )
+
+    # Parse existing configuration to get current values
+    parsed_config = nginx_parser.parse_config_file(conf_file)
+    if not parsed_config:
+        if dry_run:
+            return DryRunResult(
+                would_succeed=False,
+                operation="update",
+                message=f"Failed to parse existing configuration for '{site_name}'",
+                validation_passed=False,
+                affected_sites=[site_name]
+            )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse existing configuration for '{site_name}'"
+        )
+
+    # Get current content for diff
+    current_content = conf_file.read_text()
+
+    # Use adapter to get flattened values
+    existing = ConfigAdapter.to_rich_dict(parsed_config)
+
+    # Determine site type from existing config
+    if existing.get("proxy_pass"):
+        site_type = SiteType.REVERSE_PROXY
+    else:
+        site_type = SiteType.STATIC
+
+    # Merge existing with updates
+    server_names = request.server_names or existing.get("server_names") or [site_name]
+    listen_port = request.listen_port or (existing.get("listen_ports", [80])[0] if existing.get("listen_ports") else 80)
+
+    # Create a new config request with merged values
+    create_request = SiteCreateRequest(
+        name=site_name,
+        server_names=server_names,
+        site_type=site_type,
+        listen_port=listen_port,
+        root_path=request.root_path or existing.get("root_path"),
+        proxy_pass=request.proxy_pass or existing.get("proxy_pass"),
+        auto_reload=request.auto_reload
+    )
+
+    # Generate new configuration
+    generator = get_config_generator()
+    config_content = generator.generate(create_request)
+
+    # Validate configuration
+    validation_passed = True
+    validation_output = None
+
+    if settings.validate_before_deploy:
+        # Backup and write for validation
+        backup_path = conf_file.with_suffix('.conf.bak')
+        shutil.copy(conf_file, backup_path)
+        try:
+            conf_file.write_text(config_content)
+            success, stdout, stderr = await docker_service.test_config()
+            validation_output = stderr or stdout
+            if not success:
+                validation_passed = False
+            # Restore original for now
+            shutil.copy(backup_path, conf_file)
+        finally:
+            backup_path.unlink(missing_ok=True)
+
+    # Calculate diff
+    current_lines = current_content.count('\n') + 1
+    new_lines = config_content.count('\n') + 1
+
+    # If dry_run, return preview result
+    if dry_run:
+        return DryRunResult(
+            would_succeed=validation_passed,
+            operation="update",
+            message=f"Would update site '{site_name}'",
+            validation_passed=validation_passed,
+            validation_output=validation_output,
+            warnings=[],
+            diff=DryRunDiff(
+                operation="update",
+                file_path=str(conf_file),
+                current_content=current_content,
+                new_content=config_content,
+                lines_added=max(0, new_lines - current_lines),
+                lines_removed=max(0, current_lines - new_lines)
+            ),
+            affected_sites=[site_name],
+            reload_required=True,
+            generated_config=config_content
+        )
+
+    # Actual update
+    if not validation_passed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Configuration validation failed: {validation_output}"
         )
 
     async with transactional_operation(
@@ -449,66 +648,9 @@ async def update_site(site_name: str, request: SiteUpdateRequest) -> SiteMutatio
         resource_id=site_name
     ) as ctx:
         try:
-            # Parse existing configuration to get current values
-            parsed_config = nginx_parser.parse_config_file(conf_file)
-            if not parsed_config:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to parse existing configuration for '{site_name}'"
-                )
-
-            # Use adapter to get flattened values
-            existing = ConfigAdapter.to_rich_dict(parsed_config)
-
-            # Determine site type from existing config
-            if existing.get("proxy_pass"):
-                site_type = SiteType.REVERSE_PROXY
-            else:
-                site_type = SiteType.STATIC
-
-            # Merge existing with updates
-            server_names = request.server_names or existing.get("server_names") or [site_name]
-            listen_port = request.listen_port or (existing.get("listen_ports", [80])[0] if existing.get("listen_ports") else 80)
-
-            # Create a new config request with merged values
-            create_request = SiteCreateRequest(
-                name=site_name,
-                server_names=server_names,
-                site_type=site_type,
-                listen_port=listen_port,
-                root_path=request.root_path or existing.get("root_path"),
-                proxy_pass=request.proxy_pass or existing.get("proxy_pass"),
-                auto_reload=request.auto_reload
-            )
-
-            # Generate new configuration
-            generator = get_config_generator()
-            config_content = generator.generate(create_request)
-
-            # Backup existing config
-            backup_path = conf_file.with_suffix('.conf.bak')
-            shutil.copy(conf_file, backup_path)
-
-            try:
-                # Write new configuration
-                conf_file.write_text(config_content)
-
-                # Validate if enabled
-                if settings.validate_before_deploy:
-                    success, stdout, stderr = await docker_service.test_config()
-                    if not success:
-                        # Restore backup
-                        shutil.copy(backup_path, conf_file)
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Configuration validation failed: {stderr}"
-                        )
-
-                logger.info(f"Updated site configuration: {conf_file}")
-
-            finally:
-                # Clean up backup
-                backup_path.unlink(missing_ok=True)
+            # Write the new config
+            conf_file.write_text(config_content)
+            logger.info(f"Updated site configuration: {conf_file}")
 
             # Optionally reload NGINX
             reloaded = False
@@ -542,13 +684,16 @@ async def update_site(site_name: str, request: SiteUpdateRequest) -> SiteMutatio
 
 @router.delete(
     "/{site_name}",
-    response_model=SiteDeleteResponse,
+    response_model=Union[SiteDeleteResponse, DryRunResult],
     summary="Delete Site Configuration",
     description="""
     Delete an NGINX site configuration.
 
     This endpoint removes the site configuration file from the conf.d directory.
     The deletion is wrapped in a transaction and a snapshot is created for rollback.
+
+    **Dry Run Mode:**
+    Add `?dry_run=true` to preview the deletion without making changes.
 
     **Warning:** This operation removes the configuration file permanently.
     Use disable instead if you want to keep the configuration for later.
@@ -557,24 +702,26 @@ async def update_site(site_name: str, request: SiteUpdateRequest) -> SiteMutatio
     Set `auto_reload: true` to automatically reload NGINX after deletion.
     """,
     responses={
-        200: {"description": "Site deleted successfully"},
+        200: {"description": "Site deleted successfully (or dry run result)"},
         404: {"description": "Site not found"},
         500: {"description": "Internal server error during deletion"}
     }
 )
 async def delete_site(
     site_name: str,
-    auto_reload: bool = Query(default=False, description="Reload NGINX after deletion")
-) -> SiteDeleteResponse:
+    auto_reload: bool = Query(default=False, description="Reload NGINX after deletion"),
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+) -> Union[SiteDeleteResponse, DryRunResult]:
     """
     Delete a site configuration.
 
     Args:
         site_name: Name of the site to delete
         auto_reload: Whether to reload NGINX after deletion
+        dry_run: If True, preview the operation without making changes
 
     Returns:
-        SiteDeleteResponse: Result of the deletion operation
+        SiteDeleteResponse or DryRunResult depending on dry_run flag
     """
     conf_dir = get_nginx_conf_path()
     conf_file = conf_dir / f"{site_name}.conf"
@@ -591,9 +738,39 @@ async def delete_site(
         target_file = disabled_file
         was_enabled = False
     else:
+        if dry_run:
+            return DryRunResult(
+                would_succeed=False,
+                operation="delete",
+                message=f"Site '{site_name}' not found",
+                validation_passed=False,
+                affected_sites=[site_name]
+            )
         raise HTTPException(
             status_code=404,
             detail=f"Site '{site_name}' not found"
+        )
+
+    # If dry_run, return preview result
+    if dry_run:
+        current_content = target_file.read_text()
+        lines = current_content.count('\n') + 1
+        return DryRunResult(
+            would_succeed=True,
+            operation="delete",
+            message=f"Would delete site '{site_name}' ({lines} lines of configuration)",
+            validation_passed=True,
+            warnings=[],
+            diff=DryRunDiff(
+                operation="delete",
+                file_path=str(target_file),
+                current_content=current_content,
+                new_content=None,
+                lines_added=0,
+                lines_removed=lines
+            ),
+            affected_sites=[site_name],
+            reload_required=was_enabled
         )
 
     async with transactional_operation(
@@ -637,7 +814,7 @@ async def delete_site(
 
 @router.post(
     "/{site_name}/enable",
-    response_model=SiteMutationResponse,
+    response_model=Union[SiteMutationResponse, DryRunResult],
     summary="Enable Site",
     description="""
     Enable a disabled site configuration.
@@ -645,11 +822,14 @@ async def delete_site(
     This endpoint renames a `.conf.disabled` file back to `.conf`,
     making the site active in NGINX.
 
+    **Dry Run Mode:**
+    Add `?dry_run=true` to preview the operation without making changes.
+
     **Auto-reload:**
     Set `auto_reload: true` to automatically reload NGINX after enabling.
     """,
     responses={
-        200: {"description": "Site enabled successfully"},
+        200: {"description": "Site enabled successfully (or dry run result)"},
         400: {"description": "Site is already enabled"},
         404: {"description": "Site not found"},
         500: {"description": "Internal server error"}
@@ -657,17 +837,19 @@ async def delete_site(
 )
 async def enable_site(
     site_name: str,
-    request: SiteEnableDisableRequest = None
-) -> SiteMutationResponse:
+    request: SiteEnableDisableRequest = None,
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+) -> Union[SiteMutationResponse, DryRunResult]:
     """
     Enable a disabled site.
 
     Args:
         site_name: Name of the site to enable
         request: Optional request body with auto_reload setting
+        dry_run: If True, preview the operation without making changes
 
     Returns:
-        SiteMutationResponse: Result of the enable operation
+        SiteMutationResponse or DryRunResult depending on dry_run flag
     """
     auto_reload = request.auto_reload if request else False
 
@@ -677,15 +859,68 @@ async def enable_site(
 
     # Check current state
     if conf_file.exists():
+        if dry_run:
+            return DryRunResult(
+                would_succeed=False,
+                operation="enable",
+                message=f"Site '{site_name}' is already enabled",
+                validation_passed=False,
+                affected_sites=[site_name]
+            )
         raise HTTPException(
             status_code=400,
             detail=f"Site '{site_name}' is already enabled"
         )
 
     if not disabled_file.exists():
+        if dry_run:
+            return DryRunResult(
+                would_succeed=False,
+                operation="enable",
+                message=f"Site '{site_name}' not found",
+                validation_passed=False,
+                affected_sites=[site_name]
+            )
         raise HTTPException(
             status_code=404,
             detail=f"Site '{site_name}' not found"
+        )
+
+    # If dry_run, validate config and return preview result
+    if dry_run:
+        current_content = disabled_file.read_text()
+        validation_passed = True
+        validation_output = None
+
+        if settings.validate_before_deploy:
+            # Temporarily enable for validation
+            disabled_file.rename(conf_file)
+            try:
+                success, stdout, stderr = await docker_service.test_config()
+                validation_output = stderr or stdout
+                validation_passed = success
+            finally:
+                # Restore disabled state
+                conf_file.rename(disabled_file)
+
+        return DryRunResult(
+            would_succeed=validation_passed,
+            operation="enable",
+            message=f"Would enable site '{site_name}'",
+            validation_passed=validation_passed,
+            validation_output=validation_output,
+            warnings=[],
+            diff=DryRunDiff(
+                operation="enable",
+                file_path=str(conf_file),
+                current_content=None,
+                new_content=current_content,
+                lines_added=0,
+                lines_removed=0
+            ),
+            affected_sites=[site_name],
+            reload_required=True,
+            generated_config=current_content
         )
 
     async with transactional_operation(
@@ -741,7 +976,7 @@ async def enable_site(
 
 @router.post(
     "/{site_name}/disable",
-    response_model=SiteMutationResponse,
+    response_model=Union[SiteMutationResponse, DryRunResult],
     summary="Disable Site",
     description="""
     Disable a site configuration without deleting it.
@@ -749,11 +984,14 @@ async def enable_site(
     This endpoint renames the `.conf` file to `.conf.disabled`,
     preventing NGINX from loading it while preserving the configuration.
 
+    **Dry Run Mode:**
+    Add `?dry_run=true` to preview the operation without making changes.
+
     **Auto-reload:**
     Set `auto_reload: true` to automatically reload NGINX after disabling.
     """,
     responses={
-        200: {"description": "Site disabled successfully"},
+        200: {"description": "Site disabled successfully (or dry run result)"},
         400: {"description": "Site is already disabled"},
         404: {"description": "Site not found"},
         500: {"description": "Internal server error"}
@@ -761,17 +999,19 @@ async def enable_site(
 )
 async def disable_site(
     site_name: str,
-    request: SiteEnableDisableRequest = None
-) -> SiteMutationResponse:
+    request: SiteEnableDisableRequest = None,
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+) -> Union[SiteMutationResponse, DryRunResult]:
     """
     Disable a site without deleting its configuration.
 
     Args:
         site_name: Name of the site to disable
         request: Optional request body with auto_reload setting
+        dry_run: If True, preview the operation without making changes
 
     Returns:
-        SiteMutationResponse: Result of the disable operation
+        SiteMutationResponse or DryRunResult depending on dry_run flag
     """
     auto_reload = request.auto_reload if request else False
 
@@ -781,15 +1021,52 @@ async def disable_site(
 
     # Check current state
     if disabled_file.exists():
+        if dry_run:
+            return DryRunResult(
+                would_succeed=False,
+                operation="disable",
+                message=f"Site '{site_name}' is already disabled",
+                validation_passed=False,
+                affected_sites=[site_name]
+            )
         raise HTTPException(
             status_code=400,
             detail=f"Site '{site_name}' is already disabled"
         )
 
     if not conf_file.exists():
+        if dry_run:
+            return DryRunResult(
+                would_succeed=False,
+                operation="disable",
+                message=f"Site '{site_name}' not found",
+                validation_passed=False,
+                affected_sites=[site_name]
+            )
         raise HTTPException(
             status_code=404,
             detail=f"Site '{site_name}' not found"
+        )
+
+    # If dry_run, return preview result
+    if dry_run:
+        current_content = conf_file.read_text()
+        return DryRunResult(
+            would_succeed=True,
+            operation="disable",
+            message=f"Would disable site '{site_name}'",
+            validation_passed=True,
+            warnings=[],
+            diff=DryRunDiff(
+                operation="disable",
+                file_path=str(disabled_file),
+                current_content=current_content,
+                new_content=None,
+                lines_added=0,
+                lines_removed=0
+            ),
+            affected_sites=[site_name],
+            reload_required=True
         )
 
     async with transactional_operation(

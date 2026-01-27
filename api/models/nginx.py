@@ -266,3 +266,42 @@ class NginxConfigTestResult(BaseModel):
         default="/etc/nginx/nginx.conf",
         description="Configuration file tested"
     )
+
+
+class NginxDryRunResult(BaseModel):
+    """Result of a dry-run nginx operation."""
+
+    dry_run: bool = Field(default=True, description="Always true for dry-run responses")
+    would_succeed: bool = Field(..., description="Whether the operation would likely succeed")
+    operation: str = Field(..., description="Operation that would be performed")
+    message: str = Field(..., description="Summary of what would happen")
+
+    # Current state info
+    current_state: str = Field(..., description="Current NGINX container state")
+    container_running: bool = Field(..., description="Whether NGINX container is running")
+
+    # Config validation
+    config_valid: bool = Field(
+        default=True,
+        description="Whether current NGINX configuration is valid (from nginx -t)"
+    )
+    config_test_output: Optional[str] = Field(
+        None,
+        description="Output from nginx -t validation"
+    )
+
+    # Impact assessment
+    would_drop_connections: bool = Field(
+        default=False,
+        description="Whether this operation would drop active connections"
+    )
+    estimated_downtime_ms: Optional[int] = Field(
+        None,
+        description="Estimated downtime in milliseconds (0 for reload)"
+    )
+
+    # Warnings
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Potential issues or considerations"
+    )

@@ -18,6 +18,8 @@ services:
       - api-backups:/var/backups/nginx
       # Development: mount source code for hot reload
       - ../../api:/app/api
+      # Mount tests directory for running tests
+      - ../../tests:/app/tests
       # Docker socket for container management
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
