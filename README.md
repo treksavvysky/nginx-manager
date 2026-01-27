@@ -67,8 +67,9 @@ nginx-manager/
 ## 🚀 Development Approach
 
 ### Current Phase: AI-Native Core (Phase 2)
-- **Completed**: Parser upgrade (crossplane), NGINX control endpoints, Transaction & Event model, Site CRUD
-- **In Progress**: Rich context responses, SSL management
+- **Completed**: Parser upgrade (crossplane), NGINX control endpoints, Transaction & Event model, Site CRUD, Dry-run mode, Auto-rollback
+- **In Progress**: Rich context responses, MCP interface design
+- **Next Phase**: SSL management (Phase 3)
 - **Strategy**: Build foundational AI-agent patterns before adding features
 
 ### Key Design Decisions
@@ -136,6 +137,7 @@ DELETE /sites/{name}          # Remove site
 POST   /sites/{name}/enable   # Enable a disabled site
 POST   /sites/{name}/disable  # Disable site without deleting
 ```
+All mutation endpoints support `?dry_run=true` to preview changes without applying them.
 
 ### SSL Management
 ```
@@ -153,6 +155,7 @@ POST   /nginx/restart       # Full restart with health verification
 GET    /nginx/status        # Container status, uptime, health
 POST   /nginx/test          # Validate config with nginx -t
 ```
+Reload and restart support `?dry_run=true` to validate config and preview impact without executing.
 
 ### Transactions & Rollback (Implemented)
 ```
@@ -187,8 +190,10 @@ POST   /system/deploy       # Deploy configuration changes
 
 - **Config Validation**: Every change tested with `nginx -t` before deployment
 - **Automatic Backups**: Configuration backed up before any modification
-- **Rollback Capability**: Quick restoration to last known good config
-- **Dry Run Mode**: Test changes without applying them
+- **Transaction System**: All changes wrapped in transactions with full audit trail
+- **Rollback Capability**: Quick restoration to any previous configuration state
+- **Auto-Rollback**: Configuration automatically restored if health check fails after reload
+- **Dry Run Mode**: Preview any operation with `?dry_run=true` - see generated configs, diffs, and validation results
 - **Health Checks**: Monitor NGINX and upstream services
 - **Alert System**: Proactive notifications for SSL expiry, errors, etc.
 

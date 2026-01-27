@@ -68,7 +68,7 @@ Client (AI Agents / REST API)
 - `api/models/transaction.py` - Transaction, TransactionDetail, RollbackResult models
 - `api/models/event.py` - Event, EventFilters models
 - `api/models/config.py` - Pydantic models: SiteConfig, SiteConfigResponse, ConfigValidationResult
-- `api/models/site_requests.py` - Site CRUD request/response models: SiteCreateRequest, SiteUpdateRequest, SiteMutationResponse
+- `api/models/site_requests.py` - Site CRUD request/response models: SiteCreateRequest, SiteUpdateRequest, SiteMutationResponse, DryRunResult, DryRunDiff
 - `api/config.py` - Pydantic BaseSettings for environment configuration
 
 **Docker setup:**
@@ -90,6 +90,13 @@ Environment variables managed via Pydantic BaseSettings in `api/config.py`:
 - `SNAPSHOT_DIR` - Directory for configuration snapshots
 - `SNAPSHOT_RETENTION_DAYS`, `EVENT_RETENTION_DAYS` - Retention policies
 - `AUTO_ROLLBACK_ON_FAILURE` - Automatic rollback on operation failure
+
+## Key Features
+
+- **Dry-Run Mode**: All mutation endpoints support `?dry_run=true` to preview changes without applying them
+- **Transaction System**: All changes create transactions with snapshots for rollback capability
+- **Auto-Rollback**: If health check fails after NGINX reload, configuration automatically rolls back
+- **Config Validation**: All config changes validated with `nginx -t` before deployment
 
 ## Current Limitations
 
