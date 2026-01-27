@@ -51,8 +51,17 @@ class ConfigAdapter:
         # Find proxy_pass (first one found in locations)
         proxy_pass = ConfigAdapter._find_proxy_pass(primary_server)
 
+        # Determine enabled status from file extension
+        file_path = Path(parsed.file_path)
+        is_enabled = not file_path.name.endswith('.disabled')
+
+        # Get site name (strip .disabled if present)
+        name = file_path.stem
+        if name.endswith('.conf'):
+            name = name[:-5]  # Remove .conf from name like "site.conf.disabled"
+
         return {
-            "name": Path(parsed.file_path).stem,
+            "name": name,
             "file_path": parsed.file_path,
             "file_size": parsed.file_size,
             "created_at": parsed.created_at,
@@ -63,6 +72,7 @@ class ConfigAdapter:
             "root_path": root_path,
             "proxy_pass": proxy_pass,
             "has_ssl_cert": has_ssl_cert,
+            "enabled": is_enabled,
         }
 
     @staticmethod

@@ -67,8 +67,8 @@ nginx-manager/
 ## 🚀 Development Approach
 
 ### Current Phase: AI-Native Core (Phase 2)
-- **Completed**: Parser upgrade (crossplane), NGINX control endpoints, Transaction & Event model
-- **In Progress**: Rich context responses, site CRUD
+- **Completed**: Parser upgrade (crossplane), NGINX control endpoints, Transaction & Event model, Site CRUD
+- **In Progress**: Rich context responses, SSL management
 - **Strategy**: Build foundational AI-agent patterns before adding features
 
 ### Key Design Decisions
@@ -126,14 +126,15 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 ## 🎯 API Endpoints (Planned)
 
-### Configuration Management
+### Configuration Management (Implemented)
 ```
-GET    /sites/              # List all server blocks
-GET    /sites/{name}         # Get specific site config
-POST   /sites/              # Create new site
-PUT    /sites/{name}         # Update existing site
-DELETE /sites/{name}         # Remove site
-POST   /sites/{name}/test    # Test config without deploying
+GET    /sites/                # List all sites (including disabled)
+GET    /sites/{name}          # Get specific site config
+POST   /sites/                # Create new site (static or reverse_proxy)
+PUT    /sites/{name}          # Update existing site
+DELETE /sites/{name}          # Remove site
+POST   /sites/{name}/enable   # Enable a disabled site
+POST   /sites/{name}/disable  # Disable site without deleting
 ```
 
 ### SSL Management

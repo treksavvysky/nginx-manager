@@ -92,6 +92,7 @@ class SiteConfigResponse(BaseModel):
     proxy_pass: Optional[str] = Field(None, description="Upstream URL for reverse proxy")
     has_ssl_cert: bool = Field(default=False, description="Whether SSL certificate is configured")
     status: ConfigStatus = Field(default=ConfigStatus.UNTESTED, description="Config validation status")
+    enabled: bool = Field(default=True, description="Whether the site is enabled (active in NGINX)")
 
     # File metadata
     file_path: str = Field(..., description="Full path to the configuration file")

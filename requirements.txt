@@ -16,6 +16,9 @@ python-dotenv>=1.0.0
 # NGINX config parsing
 crossplane>=0.5.8
 
+# Config generation
+Jinja2>=3.1.0
+
 # Docker container management
 docker>=7.0.0
 

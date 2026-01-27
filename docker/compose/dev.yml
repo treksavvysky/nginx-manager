@@ -11,8 +11,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Mount configuration directories
-      - ../../test-configs:/etc/nginx/conf.d:ro
+      # Mount configuration directories (rw for CRUD operations)
+      - ../../test-configs:/etc/nginx/conf.d
       - nginx-ssl:/etc/ssl
       - api-logs:/var/log/nginx-manager
       - api-backups:/var/backups/nginx

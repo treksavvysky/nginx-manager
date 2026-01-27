@@ -91,12 +91,14 @@ This phase establishes the foundation for reliable AI agent interaction. The par
 - [ ] Impact analysis: what services/sites will be affected
 
 ### 2.5 Site CRUD (with AI Patterns)
-- [ ] `POST /sites/` - Create new site configuration
-- [ ] `PUT /sites/{name}` - Update existing site
-- [ ] `DELETE /sites/{name}` - Remove site configuration
-- [ ] `POST /sites/{name}/enable` - Enable site (symlink to sites-enabled)
-- [ ] `POST /sites/{name}/disable` - Disable site without deletion
-- [ ] All responses follow rich context pattern
+- [x] `POST /sites/` - Create new site configuration (static or reverse_proxy)
+- [x] `PUT /sites/{name}` - Update existing site
+- [x] `DELETE /sites/{name}` - Remove site configuration
+- [x] `POST /sites/{name}/enable` - Enable site (file rename .conf.disabled -> .conf)
+- [x] `POST /sites/{name}/disable` - Disable site without deletion
+- [x] All responses include transaction IDs for rollback
+- [x] Jinja2-based config generation from templates
+- [x] Config validation with nginx -t before deployment
 - [ ] Suggested actions in every response
 
 ### 2.6 NGINX Control
@@ -279,7 +281,8 @@ Dashboard is lowest priority for an AI-first tool—but valuable for monitoring 
 - [x] Parser tests with complex NGINX configs (18 tests)
 - [x] NGINX endpoint tests with mocked Docker service (15 tests)
 - [x] Transaction model and snapshot service tests (18 tests)
-- [x] Total: 51 unit tests
+- [x] Config generator tests (14 tests)
+- [x] Total: 65 unit tests
 
 ### Integration Tests
 - [x] API endpoint tests with actual NGINX container

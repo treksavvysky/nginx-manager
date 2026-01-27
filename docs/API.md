@@ -69,7 +69,7 @@ Health check endpoint for monitoring and orchestration. Shows real-time NGINX co
 ### Sites
 
 #### GET /sites/
-List all site configurations.
+List all site configurations (including disabled sites).
 
 **Response** (returns array directly):
 ```json
@@ -83,6 +83,7 @@ List all site configurations.
     "proxy_pass": null,
     "has_ssl_cert": false,
     "status": "untested",
+    "enabled": true,
     "file_path": "/etc/nginx/conf.d/example.com.conf",
     "file_size": 189,
     "created_at": "2026-01-20T19:06:27.322568",
@@ -113,6 +114,7 @@ Get a specific site configuration.
   "proxy_pass": "http://localhost:3000",
   "has_ssl_cert": false,
   "status": "untested",
+  "enabled": true,
   "file_path": "/etc/nginx/conf.d/api.example.com.conf",
   "file_size": 332,
   "created_at": "2026-01-20T19:06:27.322568",
@@ -125,10 +127,6 @@ Get a specific site configuration.
 - `404`: Site not found
 - `500`: Error parsing configuration
 
----
-
-### Planned Endpoints (Phase 2+)
-
 #### POST /sites/
 Create a new site configuration.
 
@@ -136,26 +134,164 @@ Create a new site configuration.
 ```json
 {
   "name": "newsite.com",
-  "server_name": "newsite.com www.newsite.com",
+  "server_names": ["newsite.com", "www.newsite.com"],
+  "site_type": "static",
   "listen_port": 80,
-  "type": "static|proxy",
   "root_path": "/var/www/newsite",
-  "proxy_pass": "http://localhost:3000",
-  "ssl_enabled": false
+  "index_files": ["index.html", "index.htm"],
+  "auto_reload": false
 }
 ```
+
+For reverse proxy sites:
+```json
+{
+  "name": "api.newsite.com",
+  "server_names": ["api.newsite.com"],
+  "site_type": "reverse_proxy",
+  "listen_port": 80,
+  "proxy_pass": "http://localhost:3000",
+  "auto_reload": true
+}
+```
+
+**Response** (201 Created):
+```json
+{
+  "success": true,
+  "message": "Site 'newsite.com' created successfully",
+  "site_name": "newsite.com",
+  "transaction_id": "7c352163-4f85-4740-b784-f7df4d3a7f55",
+  "file_path": "/etc/nginx/conf.d/newsite.com.conf",
+  "reload_required": true,
+  "reloaded": false,
+  "enabled": true,
+  "created_at": "2026-01-27T01:33:56.931794"
+}
+```
+
+**Errors**:
+- `400`: Invalid configuration or validation failed
+- `409`: Site already exists
 
 #### PUT /sites/{site_name}
 Update an existing site configuration.
 
+**Parameters**:
+- `site_name` (path): Name of the site to update
+
+**Request Body** (all fields optional):
+```json
+{
+  "server_names": ["newsite.com", "www.newsite.com", "alias.com"],
+  "listen_port": 8080,
+  "root_path": "/var/www/newsite-v2",
+  "proxy_pass": "http://localhost:4000",
+  "auto_reload": false
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Site 'newsite.com' updated successfully",
+  "site_name": "newsite.com",
+  "transaction_id": "3277c33c-a001-4ae6-a224-9928f2cc7d02",
+  "file_path": "/etc/nginx/conf.d/newsite.com.conf",
+  "reload_required": true,
+  "reloaded": false,
+  "enabled": true
+}
+```
+
+**Errors**:
+- `400`: Invalid configuration, validation failed, or site is disabled
+- `404`: Site not found
+
 #### DELETE /sites/{site_name}
 Delete a site configuration.
 
+**Parameters**:
+- `site_name` (path): Name of the site to delete
+- `auto_reload` (query, optional): Reload NGINX after deletion (default: false)
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Site 'newsite.com' deleted successfully",
+  "site_name": "newsite.com",
+  "transaction_id": "25a32b04-8930-4c59-95d1-f4b6975f07ba",
+  "reload_required": false,
+  "reloaded": true
+}
+```
+
+**Errors**:
+- `404`: Site not found
+
 #### POST /sites/{site_name}/enable
-Enable a site (create symlink to sites-enabled).
+Enable a disabled site (renames `.conf.disabled` back to `.conf`).
+
+**Parameters**:
+- `site_name` (path): Name of the site to enable
+
+**Request Body** (optional):
+```json
+{
+  "auto_reload": true
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Site 'newsite.com' enabled successfully",
+  "site_name": "newsite.com",
+  "transaction_id": "0f299def-b8ba-41c3-abe2-3b1815d3fca6",
+  "file_path": "/etc/nginx/conf.d/newsite.com.conf",
+  "reload_required": true,
+  "reloaded": false,
+  "enabled": true
+}
+```
+
+**Errors**:
+- `400`: Site is already enabled
+- `404`: Site not found
 
 #### POST /sites/{site_name}/disable
-Disable a site without deleting configuration.
+Disable a site without deleting it (renames `.conf` to `.conf.disabled`).
+
+**Parameters**:
+- `site_name` (path): Name of the site to disable
+
+**Request Body** (optional):
+```json
+{
+  "auto_reload": true
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Site 'newsite.com' disabled successfully",
+  "site_name": "newsite.com",
+  "transaction_id": "8b7b12f3-f69c-4264-8604-8854cd6804bc",
+  "file_path": "/etc/nginx/conf.d/newsite.com.conf.disabled",
+  "reload_required": true,
+  "reloaded": false,
+  "enabled": false
+}
+```
+
+**Errors**:
+- `400`: Site is already disabled
+- `404`: Site not found
 
 ---
 
