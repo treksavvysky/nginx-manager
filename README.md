@@ -21,8 +21,11 @@ This project aims to create an intelligent NGINX management system that serves a
 
 The API uses [crossplane](https://github.com/nginxinc/crossplane) for reliable NGINX config parsing:
 
-- **Full directive support**: server blocks, location blocks, upstreams
+- **Full directive support**: server blocks, location blocks, upstreams, map, geo
 - **Nested block parsing**: location modifiers (=, ~, ~*, ^~), nested directives
+- **Include resolution**: recursive include file resolution with glob pattern support
+- **Map directives**: variable mappings with hostnames/volatile flags
+- **Geo directives**: IP-based variable mapping with proxy/ranges support
 - **SSL configuration**: certificate paths, protocols, ciphers
 - **Rich metadata**: line numbers for error reporting, header extraction
 - **Backward compatible**: legacy flat fields + optional rich fields in responses
@@ -67,7 +70,7 @@ nginx-manager/
 ## 🚀 Development Approach
 
 ### Current Phase: AI-Native Core (Phase 2)
-- **Completed**: Parser upgrade (crossplane), NGINX control endpoints, Transaction & Event model, Site CRUD, Dry-run mode, Auto-rollback, Rich context responses
+- **Completed**: Full parser (crossplane with map/geo/include), NGINX control endpoints, Transaction & Event model, Site CRUD, Dry-run mode, Auto-rollback, Rich context responses
 - **In Progress**: MCP interface design
 - **Next Phase**: SSL management (Phase 3)
 - **Strategy**: Build foundational AI-agent patterns before adding features

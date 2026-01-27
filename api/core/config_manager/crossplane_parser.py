@@ -7,8 +7,9 @@ AI-agent-ready configuration parsing.
 """
 
 import crossplane
+import glob as glob_module
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Set
 from datetime import datetime
 import logging
 
@@ -20,6 +21,8 @@ from models.nginx import (
     UpstreamServer,
     ListenDirective,
     SSLConfig,
+    MapBlock,
+    GeoBlock,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,12 +31,23 @@ logger = logging.getLogger(__name__)
 class CrossplaneParser:
     """Full-featured NGINX parser using crossplane library."""
 
-    def parse_config_file(self, file_path: Path) -> Optional[ParsedNginxConfig]:
+    def __init__(self):
+        """Initialize the parser with tracking for circular include detection."""
+        self._parsing_files: Set[str] = set()
+
+    def parse_config_file(
+        self,
+        file_path: Path,
+        resolve_includes: bool = False,
+        _visited: Optional[Set[str]] = None,
+    ) -> Optional[ParsedNginxConfig]:
         """
         Parse a single NGINX configuration file.
 
         Args:
             file_path: Path to the .conf file
+            resolve_includes: If True, recursively parse included files
+            _visited: Internal set for circular include detection
 
         Returns:
             ParsedNginxConfig with full directive tree, or None if file not found
@@ -42,6 +56,20 @@ class CrossplaneParser:
             if not file_path.exists():
                 logger.warning(f"Config file not found: {file_path}")
                 return None
+
+            # Convert to absolute path for consistent tracking
+            abs_path = str(file_path.resolve())
+
+            # Initialize visited set for circular include detection
+            if _visited is None:
+                _visited = set()
+
+            # Check for circular includes
+            if abs_path in _visited:
+                logger.warning(f"Circular include detected: {abs_path}")
+                return None
+
+            _visited.add(abs_path)
 
             # Get file metadata
             stat = file_path.stat()
@@ -68,7 +96,10 @@ class CrossplaneParser:
             server_blocks = []
             upstreams = []
             maps = []
+            geos = []
             includes = []
+            resolved_includes = []
+            included_configs = []
             raw_directives = []
 
             for config in payload.get("config", []):
@@ -78,6 +109,9 @@ class CrossplaneParser:
 
                 parsed = config.get("parsed", [])
                 raw_directives.extend(parsed)
+
+                # Recursively extract all include patterns from the directive tree
+                self._extract_includes_recursive(parsed, includes)
 
                 for directive in parsed:
                     directive_name = directive.get("directive", "")
@@ -97,12 +131,39 @@ class CrossplaneParser:
                             upstreams.append(upstream)
 
                     elif directive_name == "map":
-                        maps.append(directive)
-
-                    elif directive_name == "include":
                         args = directive.get("args", [])
-                        if args:
-                            includes.append(args[0])
+                        block = directive.get("block", [])
+                        line = directive.get("line", 0)
+                        map_block = self._parse_map_block(args, block, line)
+                        maps.append(map_block)
+
+                    elif directive_name == "geo":
+                        args = directive.get("args", [])
+                        block = directive.get("block", [])
+                        line = directive.get("line", 0)
+                        geo_block = self._parse_geo_block(args, block, line)
+                        geos.append(geo_block)
+
+                    # Note: includes are extracted via _extract_includes_recursive above,
+                    # so we don't need to handle them again here
+
+            # Resolve includes if requested (process all collected includes)
+            if resolve_includes and includes:
+                for include_pattern in includes:
+                    resolved_files = self._resolve_include_pattern(
+                        include_pattern, file_path.parent
+                    )
+                    resolved_includes.extend(resolved_files)
+
+                    # Parse included files
+                    for resolved_file in resolved_files:
+                        included_config = self.parse_config_file(
+                            Path(resolved_file),
+                            resolve_includes=True,
+                            _visited=_visited,
+                        )
+                        if included_config:
+                            included_configs.append(included_config)
 
             return ParsedNginxConfig(
                 file_path=str(file_path),
@@ -114,13 +175,205 @@ class CrossplaneParser:
                 server_blocks=server_blocks,
                 upstreams=upstreams,
                 maps=maps,
+                geos=geos,
                 includes=includes,
+                resolved_includes=resolved_includes,
+                included_configs=included_configs,
                 raw_directives=raw_directives,
             )
 
         except Exception as e:
             logger.error(f"Error parsing config file {file_path}: {e}")
             return None
+
+    def _extract_includes_recursive(
+        self, directives: List[Dict], includes: List[str]
+    ) -> None:
+        """
+        Recursively extract all include patterns from a directive tree.
+
+        Args:
+            directives: List of directive dictionaries
+            includes: List to append found include patterns to
+        """
+        for directive in directives:
+            directive_name = directive.get("directive", "")
+            args = directive.get("args", [])
+
+            if directive_name == "include" and args:
+                include_pattern = args[0]
+                if include_pattern not in includes:
+                    includes.append(include_pattern)
+
+            # Recurse into nested blocks
+            block = directive.get("block", [])
+            if block:
+                self._extract_includes_recursive(block, includes)
+
+    def _resolve_include_pattern(
+        self, pattern: str, base_dir: Path
+    ) -> List[str]:
+        """
+        Resolve an include pattern to actual file paths.
+
+        Handles glob patterns like *.conf, /etc/nginx/conf.d/*.conf, etc.
+
+        Args:
+            pattern: Include pattern (may contain wildcards)
+            base_dir: Base directory for relative paths
+
+        Returns:
+            List of resolved absolute file paths
+        """
+        resolved = []
+
+        # Handle relative paths
+        if not pattern.startswith("/"):
+            pattern = str(base_dir / pattern)
+
+        # Expand glob patterns
+        matched_files = glob_module.glob(pattern)
+
+        # Sort for deterministic ordering
+        matched_files.sort()
+
+        for file_path in matched_files:
+            path = Path(file_path)
+            if path.is_file():
+                resolved.append(str(path.resolve()))
+            else:
+                logger.debug(f"Include pattern matched non-file: {file_path}")
+
+        if not matched_files:
+            logger.debug(f"Include pattern matched no files: {pattern}")
+
+        return resolved
+
+    def _parse_map_block(
+        self, args: List[str], block: List[Dict], line: int
+    ) -> MapBlock:
+        """
+        Parse a map directive block.
+
+        map $uri $new_uri {
+            default 0;
+            ~^/old/ /new/;
+            /exact /replacement;
+        }
+        """
+        source_variable = args[0] if args else ""
+        target_variable = args[1] if len(args) > 1 else ""
+        default = None
+        hostnames = False
+        volatile = False
+        mappings = {}
+
+        for directive in block:
+            name = directive.get("directive", "")
+            directive_args = directive.get("args", [])
+
+            if name == "default":
+                default = directive_args[0] if directive_args else None
+            elif name == "hostnames":
+                hostnames = True
+            elif name == "volatile":
+                volatile = True
+            elif name == "include":
+                # Map blocks can include external mapping files
+                # We store them but don't resolve here (would need separate parsing)
+                pass
+            else:
+                # Regular mapping: key value
+                # In crossplane, mappings are parsed as directives where
+                # the key is the directive name and value is in args
+                if directive_args:
+                    mappings[name] = directive_args[0]
+                else:
+                    # Some patterns like "~*\.jpg$" might have no explicit value
+                    mappings[name] = ""
+
+        return MapBlock(
+            source_variable=source_variable,
+            target_variable=target_variable,
+            default=default,
+            hostnames=hostnames,
+            volatile=volatile,
+            mappings=mappings,
+            line=line,
+        )
+
+    def _parse_geo_block(
+        self, args: List[str], block: List[Dict], line: int
+    ) -> GeoBlock:
+        """
+        Parse a geo directive block.
+
+        geo $remote_addr $geo_country {
+            default unknown;
+            127.0.0.1/32 local;
+            10.0.0.0/8 private;
+            proxy 192.168.1.1;
+            delete 192.168.0.0/16;
+        }
+        """
+        # geo directive can have 1 or 2 args:
+        # geo $var { ... } - uses $remote_addr as source
+        # geo $source $var { ... } - explicit source variable
+        source_variable = None
+        target_variable = ""
+
+        if len(args) == 1:
+            target_variable = args[0]
+        elif len(args) >= 2:
+            source_variable = args[0]
+            target_variable = args[1]
+
+        default = None
+        delete_networks = []
+        proxy_addresses = []
+        proxy_recursive = False
+        ranges = False
+        mappings = {}
+        geo_includes = []
+
+        for directive in block:
+            name = directive.get("directive", "")
+            directive_args = directive.get("args", [])
+
+            if name == "default":
+                default = directive_args[0] if directive_args else None
+            elif name == "delete":
+                if directive_args:
+                    delete_networks.append(directive_args[0])
+            elif name == "proxy":
+                if directive_args:
+                    proxy_addresses.append(directive_args[0])
+            elif name == "proxy_recursive":
+                proxy_recursive = True
+            elif name == "ranges":
+                ranges = True
+            elif name == "include":
+                if directive_args:
+                    geo_includes.append(directive_args[0])
+            else:
+                # Network/address to value mapping
+                if directive_args:
+                    mappings[name] = directive_args[0]
+                else:
+                    mappings[name] = ""
+
+        return GeoBlock(
+            source_variable=source_variable,
+            target_variable=target_variable,
+            default=default,
+            delete=delete_networks,
+            proxy=proxy_addresses,
+            proxy_recursive=proxy_recursive,
+            ranges=ranges,
+            mappings=mappings,
+            includes=geo_includes,
+            line=line,
+        )
 
     def _parse_server_block(self, block: List[Dict], line: int) -> ServerBlock:
         """Extract structured ServerBlock from raw directives."""

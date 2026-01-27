@@ -84,6 +84,53 @@ CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity);
 CREATE INDEX IF NOT EXISTS idx_events_category ON events(category);
 CREATE INDEX IF NOT EXISTS idx_events_transaction_id ON events(transaction_id);
 CREATE INDEX IF NOT EXISTS idx_events_resource ON events(resource_type, resource_id);
+
+-- Certificates table (Phase 3: SSL Management)
+CREATE TABLE IF NOT EXISTS certificates (
+    id TEXT PRIMARY KEY,
+    domain TEXT NOT NULL UNIQUE,
+    alt_names_json TEXT,
+    certificate_type TEXT NOT NULL DEFAULT 'letsencrypt',
+    status TEXT NOT NULL DEFAULT 'pending',
+
+    cert_path TEXT,
+    key_path TEXT,
+    chain_path TEXT,
+
+    issuer TEXT,
+    serial_number TEXT,
+    not_before TIMESTAMP,
+    not_after TIMESTAMP,
+    fingerprint_sha256 TEXT,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_renewed TIMESTAMP,
+    renewal_attempts INTEGER DEFAULT 0,
+    last_renewal_error TEXT,
+    auto_renew BOOLEAN DEFAULT TRUE,
+
+    acme_account_id TEXT,
+    acme_order_url TEXT,
+
+    FOREIGN KEY (acme_account_id) REFERENCES acme_accounts(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_certificates_domain ON certificates(domain);
+CREATE INDEX IF NOT EXISTS idx_certificates_status ON certificates(status);
+CREATE INDEX IF NOT EXISTS idx_certificates_not_after ON certificates(not_after);
+
+-- ACME accounts table (for Let's Encrypt account persistence)
+CREATE TABLE IF NOT EXISTS acme_accounts (
+    id TEXT PRIMARY KEY,
+    email TEXT,
+    directory_url TEXT NOT NULL,
+    account_url TEXT,
+    private_key_pem TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    terms_accepted BOOLEAN DEFAULT TRUE
+);
+
+CREATE INDEX IF NOT EXISTS idx_acme_accounts_directory_url ON acme_accounts(directory_url);
 """
 
 

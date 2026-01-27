@@ -55,6 +55,43 @@ class Settings(BaseSettings):
     # SSL Configuration
     letsencrypt_dir: str = Field(default="/etc/letsencrypt", alias="LETSENCRYPT_DIR")
     ssl_cert_dir: str = Field(default="/etc/ssl/certs", alias="SSL_CERT_DIR")
+
+    # ACME/Let's Encrypt Configuration
+    acme_directory_url: str = Field(
+        default="https://acme-v02.api.letsencrypt.org/directory",
+        alias="ACME_DIRECTORY_URL",
+        description="ACME directory URL (production Let's Encrypt)"
+    )
+    acme_staging_url: str = Field(
+        default="https://acme-staging-v02.api.letsencrypt.org/directory",
+        alias="ACME_STAGING_URL",
+        description="ACME staging directory URL for testing"
+    )
+    acme_use_staging: bool = Field(
+        default=False,
+        alias="ACME_USE_STAGING",
+        description="Use staging environment to avoid rate limits during testing"
+    )
+    acme_account_email: str = Field(
+        default="",
+        alias="ACME_ACCOUNT_EMAIL",
+        description="Email for Let's Encrypt account registration"
+    )
+    acme_challenge_dir: str = Field(
+        default="/var/www/.well-known/acme-challenge",
+        alias="ACME_CHALLENGE_DIR",
+        description="Directory for ACME HTTP-01 challenge files"
+    )
+    cert_renewal_days: int = Field(
+        default=30,
+        alias="CERT_RENEWAL_DAYS",
+        description="Days before expiry to trigger automatic renewal"
+    )
+    cert_expiry_warning_days: int = Field(
+        default=14,
+        alias="CERT_EXPIRY_WARNING_DAYS",
+        description="Days before expiry to generate warning events"
+    )
     
     # Safety Settings
     validate_before_deploy: bool = Field(default=True, alias="VALIDATE_BEFORE_DEPLOY")

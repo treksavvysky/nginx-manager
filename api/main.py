@@ -16,7 +16,7 @@ import uvicorn
 import logging
 from datetime import datetime
 
-from endpoints import sites, nginx, events, transactions
+from endpoints import sites, nginx, events, transactions, certificates
 from config import settings, ensure_directories
 
 # Configure logging
@@ -40,7 +40,23 @@ async def lifespan(app: FastAPI):
     await initialize_database()
     logger.info("Database initialized")
 
+    # Start certificate renewal scheduler
+    from core.cert_scheduler import get_cert_scheduler
+    cert_scheduler = get_cert_scheduler()
+    try:
+        await cert_scheduler.start()
+        logger.info("Certificate renewal scheduler started")
+    except Exception as e:
+        logger.warning(f"Failed to start certificate scheduler: {e}")
+
     yield
+
+    # Stop certificate scheduler
+    try:
+        await cert_scheduler.stop()
+        logger.info("Certificate renewal scheduler stopped")
+    except Exception as e:
+        logger.warning(f"Error stopping certificate scheduler: {e}")
 
     logger.info("NGINX Manager API shutting down...")
 
@@ -88,6 +104,7 @@ app.include_router(sites.router)
 app.include_router(nginx.router)
 app.include_router(events.router)
 app.include_router(transactions.router)
+app.include_router(certificates.router)
 
 # CORS middleware for web interface compatibility
 app.add_middleware(
@@ -228,12 +245,51 @@ async def health_check():
             "priority": "low"
         })
 
+    # Get SSL certificate status
+    ssl_status = {
+        "status": "unknown",
+        "total": 0,
+        "valid": 0,
+        "expiring_soon": 0,
+        "expired": 0
+    }
+    try:
+        from core.cert_manager import get_cert_manager
+        from models.certificate import CertificateStatus
+        cert_manager = get_cert_manager()
+        certs = await cert_manager.list_certificates()
+        ssl_status["total"] = len(certs)
+        ssl_status["valid"] = len([c for c in certs if c.status == CertificateStatus.VALID])
+        ssl_status["expiring_soon"] = len([c for c in certs if c.status == CertificateStatus.EXPIRING_SOON])
+        ssl_status["expired"] = len([c for c in certs if c.status == CertificateStatus.EXPIRED])
+        ssl_status["status"] = "healthy" if ssl_status["expired"] == 0 else "warning"
+
+        # Add SSL suggestions
+        if ssl_status["expiring_soon"] > 0:
+            suggestions.append({
+                "action": f"Renew {ssl_status['expiring_soon']} certificate(s) expiring soon",
+                "reason": "Certificates should be renewed before they expire",
+                "endpoint": "GET /certificates/",
+                "priority": "high"
+            })
+        if ssl_status["expired"] > 0:
+            suggestions.append({
+                "action": f"Address {ssl_status['expired']} expired certificate(s)",
+                "reason": "Expired certificates will cause browser warnings",
+                "endpoint": "GET /certificates/",
+                "priority": "critical"
+            })
+    except Exception as e:
+        logger.warning(f"Failed to get SSL status: {e}")
+        ssl_status["status"] = "error"
+        ssl_status["message"] = str(e)
+
     return {
         "status": "healthy" if nginx_healthy else ("degraded" if nginx_running else "unhealthy"),
         "timestamp": datetime.now().isoformat(),
         "api": {
             "status": "running",
-            "version": "0.1.0"
+            "version": "0.2.0"
         },
         "nginx": nginx_status,
         "sites": {
@@ -243,10 +299,7 @@ async def health_check():
         },
         "system_state": system_state,
         "suggestions": suggestions,
-        "ssl": {
-            "status": "not_configured",
-            "message": "SSL management not yet implemented"
-        }
+        "ssl": ssl_status
     }
 
 

@@ -16,6 +16,8 @@ services:
       - ../../data/ssl:/etc/ssl
       - ../../data/api-logs:/var/log/nginx-manager
       - ../../data/api-backups:/var/backups/nginx
+      # ACME challenge directory for Let's Encrypt
+      - ../../data/acme-challenge:/var/www/.well-known/acme-challenge
       # Development: mount source code for hot reload
       - ../../api:/app/api
       # Mount tests directory for running tests
@@ -50,6 +52,8 @@ services:
       - ../../data/nginx-logs:/var/log/nginx
       # Website content directory
       - ../../www:/var/www
+      # ACME challenge directory for Let's Encrypt
+      - ../../data/acme-challenge:/var/www/.well-known/acme-challenge
     networks:
       - nginx-manager
     restart: unless-stopped

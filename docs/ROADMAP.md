@@ -61,8 +61,8 @@ This phase establishes the foundation for reliable AI agent interaction. The par
 - [x] Location block parsing with regex support
 - [x] Rich data models (ServerBlock, LocationBlock, UpstreamBlock, SSLConfig)
 - [x] Backward-compatible adapter for legacy response format
-- [ ] Include file resolution (`include` directives)
-- [ ] Map and geo directive parsing
+- [x] Include file resolution (`include` directives with glob support)
+- [x] Map and geo directive parsing (MapBlock, GeoBlock models)
 
 **Rationale**: Reliable parsing is a prerequisite for AI trust. An agent that sees incorrect configuration data will make incorrect decisions. This is not optional cleanup—it's foundational.
 
@@ -124,36 +124,36 @@ This phase establishes the foundation for reliable AI agent interaction. The par
 
 ## Phase 3: SSL + MCP Implementation
 
-**Status: Planned**
+**Status: SSL Complete, MCP Pending**
 
-SSL and MCP server developed in parallel. The MCP server launches with meaningful capabilities (CRUD + SSL), not as an afterthought.
+SSL certificate management is fully implemented and tested with production Let's Encrypt. MCP server implementation is next.
 
 ### 3.1 SSL Certificate Management
-- [ ] `POST /certificates/` - Request new certificate (Let's Encrypt)
-- [ ] `GET /certificates/` - List all certificates with status
-- [ ] `GET /certificates/{domain}` - Certificate details, expiry, chain info
-- [ ] `DELETE /certificates/{domain}` - Revoke and remove
-- [ ] `POST /certificates/{domain}/renew` - Manual renewal trigger
+- [x] `POST /certificates/` - Request new certificate (Let's Encrypt)
+- [x] `GET /certificates/` - List all certificates with status
+- [x] `GET /certificates/{domain}` - Certificate details, expiry, chain info
+- [x] `DELETE /certificates/{domain}` - Revoke and remove
+- [x] `POST /certificates/{domain}/renew` - Manual renewal trigger
 
 ### 3.2 Automated SSL (ACME)
-- [ ] ACME HTTP-01 challenge support
-- [ ] Auto-renewal scheduler (background task)
-- [ ] Expiry warnings in API responses and events
-- [ ] Certificate health monitoring
-- [ ] Automatic NGINX reload after renewal
+- [x] ACME HTTP-01 challenge support
+- [x] Auto-renewal scheduler (background task)
+- [x] Expiry warnings in API responses and events
+- [x] Certificate health monitoring
+- [x] Automatic NGINX reload after renewal
 
 ### 3.3 Rich SSL Context
 - [ ] Certificate status included in site responses
-- [ ] DNS verification helpers ("your domain doesn't resolve to this server")
-- [ ] Suggested actions for SSL issues
-- [ ] `GET /ssl/check/{domain}` - Full SSL diagnostic
-- [ ] Chain validation and warnings
+- [x] DNS verification helpers ("your domain doesn't resolve to this server")
+- [x] Suggested actions for SSL issues
+- [x] `GET /certificates/{domain}/check` - Full SSL diagnostic
+- [x] Chain validation and warnings
 
 ### 3.4 Custom Certificates
-- [ ] Upload custom SSL certificates
-- [ ] Certificate chain validation
+- [x] Upload custom SSL certificates
+- [x] Certificate chain validation
 - [ ] Private key security (encrypted storage)
-- [ ] Expiry tracking for custom certs
+- [x] Expiry tracking for custom certs
 
 ### 3.5 MCP Server Implementation
 - [ ] MCP protocol implementation based on Phase 2 design
@@ -278,15 +278,20 @@ Dashboard is lowest priority for an AI-first tool—but valuable for monitoring 
 ## Testing Strategy
 
 ### Unit Tests
-- [x] Parser tests with complex NGINX configs (18 tests)
+- [x] Parser tests with complex NGINX configs (35 tests: core, map, geo, include resolution)
 - [x] NGINX endpoint tests with mocked Docker service (16 tests)
 - [x] Transaction model and snapshot service tests (18 tests)
 - [x] Config generator tests (14 tests)
-- [x] Total: 66 unit tests
+- [x] Context helper tests (24 tests)
+- [x] Dry-run mode tests (12 tests)
+- [x] Certificate model tests (28 tests)
+- [x] Certificate context helper tests (15 tests)
+- [x] Certificate manager tests (15 tests)
+- [x] Total: 177 unit tests
 
 ### Integration Tests
 - [x] API endpoint tests with actual NGINX container
-- [ ] SSL workflow tests (requires staging Let's Encrypt)
+- [x] SSL workflow tests with production Let's Encrypt
 - [ ] MCP protocol compliance tests
 
 ### Agent Tests

@@ -1,0 +1,10 @@
+# ACME HTTP-01 Challenge Location Block
+# This location block handles Let's Encrypt certificate validation
+# Domain: {{ domain }}
+# Generated: {{ timestamp }}
+
+location ^~ /.well-known/acme-challenge/ {
+    alias {{ acme_challenge_dir }}/;
+    default_type "text/plain";
+    try_files $uri =404;
+}

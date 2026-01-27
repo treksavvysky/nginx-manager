@@ -329,6 +329,153 @@ def get_system_state_summary(
     }
 
 
+# SSL Certificate Helpers
+
+def get_cert_request_suggestions(
+    domain: str,
+    reloaded: bool,
+    sites_using_cert: List[str]
+) -> List[Dict[str, Any]]:
+    """Generate suggestions after certificate issuance."""
+    suggestions = []
+
+    if not reloaded:
+        suggestions.append(Suggestion(
+            action="Reload NGINX to apply SSL configuration",
+            reason="Certificate installed but NGINX hasn't loaded it yet",
+            endpoint="POST /nginx/reload",
+            priority=SuggestionPriority.HIGH
+        ).to_dict())
+
+    if not sites_using_cert:
+        suggestions.append(Suggestion(
+            action="Update site configuration to use SSL",
+            reason="Certificate is ready but no sites are configured to use it",
+            endpoint=f"PUT /sites/{domain}",
+            priority=SuggestionPriority.HIGH
+        ).to_dict())
+
+    suggestions.append(Suggestion(
+        action="Test HTTPS connectivity",
+        reason="Verify SSL is working correctly",
+        priority=SuggestionPriority.MEDIUM
+    ).to_dict())
+
+    suggestions.append(Suggestion(
+        action="Consider enabling HSTS",
+        reason="HTTP Strict Transport Security improves security",
+        priority=SuggestionPriority.LOW
+    ).to_dict())
+
+    return suggestions
+
+
+def get_cert_renewal_suggestions(domain: str) -> List[Dict[str, Any]]:
+    """Generate suggestions after certificate renewal."""
+    suggestions = []
+
+    suggestions.append(Suggestion(
+        action="Verify HTTPS is still working",
+        reason="Confirm the renewed certificate is serving correctly",
+        priority=SuggestionPriority.MEDIUM
+    ).to_dict())
+
+    suggestions.append(Suggestion(
+        action="Check certificate expiry date",
+        reason="Confirm the renewal extended the certificate validity",
+        endpoint=f"GET /certificates/{domain}",
+        priority=SuggestionPriority.LOW
+    ).to_dict())
+
+    return suggestions
+
+
+def get_cert_expiry_warnings(cert) -> List[Dict[str, Any]]:
+    """Generate warnings for certificate expiry."""
+    from datetime import datetime
+    warnings = []
+
+    if not cert.not_after:
+        return warnings
+
+    days_left = (cert.not_after - datetime.utcnow()).days
+
+    if days_left < 0:
+        warnings.append(Warning(
+            code="cert_expired",
+            message=f"Certificate expired {abs(days_left)} days ago",
+            suggestion="Request a new certificate immediately"
+        ).to_dict())
+    elif days_left < 7:
+        warnings.append(Warning(
+            code="cert_expiring_critical",
+            message=f"Certificate expires in {days_left} days (CRITICAL)",
+            suggestion="Renew certificate immediately"
+        ).to_dict())
+    elif days_left < 14:
+        warnings.append(Warning(
+            code="cert_expiring_soon",
+            message=f"Certificate expires in {days_left} days",
+            suggestion="Consider renewing soon"
+        ).to_dict())
+    elif days_left < 30:
+        warnings.append(Warning(
+            code="cert_expiring_warning",
+            message=f"Certificate expires in {days_left} days",
+            suggestion="Certificate will be auto-renewed if enabled"
+        ).to_dict())
+
+    if not cert.auto_renew and cert.certificate_type.value == "letsencrypt":
+        warnings.append(Warning(
+            code="auto_renew_disabled",
+            message="Auto-renewal is disabled for this Let's Encrypt certificate",
+            suggestion="Enable auto_renew or manually renew before expiry"
+        ).to_dict())
+
+    return warnings
+
+
+def get_cert_diagnostic_suggestions(
+    domain: str,
+    dns_ok: bool,
+    port_80_ok: bool,
+    has_cert: bool
+) -> List[Dict[str, Any]]:
+    """Generate suggestions based on SSL diagnostic results."""
+    suggestions = []
+
+    if not dns_ok:
+        suggestions.append(Suggestion(
+            action="Configure DNS A record",
+            reason="Domain must resolve to this server for certificate validation",
+            priority=SuggestionPriority.HIGH
+        ).to_dict())
+
+    if dns_ok and not port_80_ok:
+        suggestions.append(Suggestion(
+            action="Open port 80 in firewall",
+            reason="Let's Encrypt requires port 80 for HTTP-01 challenge",
+            priority=SuggestionPriority.HIGH
+        ).to_dict())
+
+    if dns_ok and port_80_ok and not has_cert:
+        suggestions.append(Suggestion(
+            action="Request SSL certificate",
+            reason="Domain is ready for SSL certificate",
+            endpoint="POST /certificates/",
+            priority=SuggestionPriority.MEDIUM
+        ).to_dict())
+
+    if has_cert:
+        suggestions.append(Suggestion(
+            action="Update site to use HTTPS",
+            reason="SSL certificate is available for this domain",
+            priority=SuggestionPriority.MEDIUM
+        ).to_dict())
+
+    return suggestions
+
+
 def get_error_context(
     error_type: str,
     error_message: str,

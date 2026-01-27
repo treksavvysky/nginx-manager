@@ -96,6 +96,54 @@ class SSLConfig(BaseModel):
     session_timeout: Optional[str] = Field(None, description="SSL session timeout")
 
 
+class MapBlock(BaseModel):
+    """Represents an NGINX map directive block."""
+
+    source_variable: str = Field(..., description="Source variable to map from (e.g., $uri)")
+    target_variable: str = Field(..., description="Target variable to create (e.g., $new_uri)")
+    default: Optional[str] = Field(None, description="Default value if no match")
+    hostnames: bool = Field(default=False, description="Enable hostname matching mode")
+    volatile: bool = Field(default=False, description="Variable is volatile (no caching)")
+    mappings: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Map entries: source value -> target value"
+    )
+    line: int = Field(default=0, description="Source line number")
+
+
+class GeoBlock(BaseModel):
+    """Represents an NGINX geo directive block."""
+
+    source_variable: Optional[str] = Field(
+        None,
+        description="Source variable (defaults to $remote_addr if not specified)"
+    )
+    target_variable: str = Field(..., description="Target variable to create")
+    default: Optional[str] = Field(None, description="Default value if no match")
+    delete: List[str] = Field(
+        default_factory=list,
+        description="Networks to remove from consideration"
+    )
+    proxy: List[str] = Field(
+        default_factory=list,
+        description="Trusted proxy addresses for X-Forwarded-For"
+    )
+    proxy_recursive: bool = Field(
+        default=False,
+        description="Enable recursive proxy address search"
+    )
+    ranges: bool = Field(default=False, description="Use memory-efficient range mode")
+    mappings: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Geo entries: CIDR/address -> value"
+    )
+    includes: List[str] = Field(
+        default_factory=list,
+        description="Included geo data files"
+    )
+    line: int = Field(default=0, description="Source line number")
+
+
 class ServerBlock(BaseModel):
     """Represents a complete NGINX server block."""
 
@@ -150,13 +198,25 @@ class ParsedNginxConfig(BaseModel):
         default_factory=list,
         description="Upstream definitions"
     )
-    maps: List[Dict[str, Any]] = Field(
+    maps: List[MapBlock] = Field(
         default_factory=list,
-        description="Map directive blocks"
+        description="Parsed map directive blocks"
+    )
+    geos: List[GeoBlock] = Field(
+        default_factory=list,
+        description="Parsed geo directive blocks"
     )
     includes: List[str] = Field(
         default_factory=list,
-        description="Referenced include files"
+        description="Referenced include file patterns (unresolved)"
+    )
+    resolved_includes: List[str] = Field(
+        default_factory=list,
+        description="Resolved include file paths (after glob expansion)"
+    )
+    included_configs: List["ParsedNginxConfig"] = Field(
+        default_factory=list,
+        description="Parsed content of included configuration files"
     )
     raw_directives: List[Dict[str, Any]] = Field(
         default_factory=list,

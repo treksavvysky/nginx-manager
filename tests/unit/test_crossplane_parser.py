@@ -281,3 +281,223 @@ class TestConfigAdapter:
         assert "upstreams" in rich
         assert len(rich["upstreams"]) == 1
         assert rich["upstreams"][0]["name"] == "backend"
+
+
+class TestMapDirectiveParsing:
+    """Tests for map directive parsing."""
+
+    @pytest.fixture
+    def parser(self):
+        return CrossplaneParser()
+
+    def test_parse_map_directives(self, parser):
+        """Test parsing configuration with map directives."""
+        config_file = FIXTURES_DIR / "map_directive.conf"
+        result = parser.parse_config_file(config_file)
+
+        assert result is not None
+        assert result.status == "ok"
+        assert len(result.maps) == 3
+
+    def test_map_source_and_target_variables(self, parser):
+        """Test that map source and target variables are correctly extracted."""
+        config_file = FIXTURES_DIR / "map_directive.conf"
+        result = parser.parse_config_file(config_file)
+
+        # First map: $uri -> $backend
+        uri_map = result.maps[0]
+        assert uri_map.source_variable == "$uri"
+        assert uri_map.target_variable == "$backend"
+        assert uri_map.default == "backend1"
+
+    def test_map_mappings(self, parser):
+        """Test that map entries are correctly parsed."""
+        config_file = FIXTURES_DIR / "map_directive.conf"
+        result = parser.parse_config_file(config_file)
+
+        uri_map = result.maps[0]
+        assert "/api" in uri_map.mappings
+        assert uri_map.mappings["/api"] == "api_backend"
+
+    def test_map_hostnames_flag(self, parser):
+        """Test that hostnames flag is detected."""
+        config_file = FIXTURES_DIR / "map_directive.conf"
+        result = parser.parse_config_file(config_file)
+
+        # Third map has hostnames flag
+        host_map = result.maps[2]
+        assert host_map.hostnames is True
+        assert host_map.source_variable == "$host"
+        assert host_map.target_variable == "$rate_limit"
+
+
+class TestGeoDirectiveParsing:
+    """Tests for geo directive parsing."""
+
+    @pytest.fixture
+    def parser(self):
+        return CrossplaneParser()
+
+    def test_parse_geo_directives(self, parser):
+        """Test parsing configuration with geo directives."""
+        config_file = FIXTURES_DIR / "geo_directive.conf"
+        result = parser.parse_config_file(config_file)
+
+        assert result is not None
+        assert result.status == "ok"
+        assert len(result.geos) == 3
+
+    def test_geo_single_variable(self, parser):
+        """Test geo with single variable (uses $remote_addr as source)."""
+        config_file = FIXTURES_DIR / "geo_directive.conf"
+        result = parser.parse_config_file(config_file)
+
+        geo = result.geos[0]
+        assert geo.source_variable is None  # Uses default $remote_addr
+        assert geo.target_variable == "$geo_country"
+        assert geo.default == "unknown"
+
+    def test_geo_two_variables(self, parser):
+        """Test geo with explicit source and target variables."""
+        config_file = FIXTURES_DIR / "geo_directive.conf"
+        result = parser.parse_config_file(config_file)
+
+        geo = result.geos[1]
+        assert geo.source_variable == "$remote_addr"
+        assert geo.target_variable == "$is_allowed"
+
+    def test_geo_mappings(self, parser):
+        """Test that geo network mappings are correctly parsed."""
+        config_file = FIXTURES_DIR / "geo_directive.conf"
+        result = parser.parse_config_file(config_file)
+
+        geo = result.geos[0]
+        assert "127.0.0.0/8" in geo.mappings
+        assert geo.mappings["127.0.0.0/8"] == "local"
+        assert "10.0.0.0/8" in geo.mappings
+        assert geo.mappings["10.0.0.0/8"] == "private"
+
+    def test_geo_delete_directive(self, parser):
+        """Test that geo delete directive is parsed."""
+        config_file = FIXTURES_DIR / "geo_directive.conf"
+        result = parser.parse_config_file(config_file)
+
+        geo = result.geos[1]
+        assert "127.0.0.1" in geo.delete
+
+    def test_geo_proxy_directive(self, parser):
+        """Test that geo proxy directive is parsed."""
+        config_file = FIXTURES_DIR / "geo_directive.conf"
+        result = parser.parse_config_file(config_file)
+
+        geo = result.geos[1]
+        assert "192.168.1.1" in geo.proxy
+        assert geo.proxy_recursive is True
+
+    def test_geo_ranges_flag(self, parser):
+        """Test that geo ranges flag is detected."""
+        config_file = FIXTURES_DIR / "geo_directive.conf"
+        result = parser.parse_config_file(config_file)
+
+        geo = result.geos[2]
+        assert geo.ranges is True
+
+
+class TestIncludeResolution:
+    """Tests for include file resolution."""
+
+    @pytest.fixture
+    def parser(self):
+        return CrossplaneParser()
+
+    def test_includes_captured_without_resolution(self, parser):
+        """Test that include patterns are captured when not resolving."""
+        config_file = FIXTURES_DIR / "main_with_includes.conf"
+        result = parser.parse_config_file(config_file, resolve_includes=False)
+
+        assert result is not None
+        assert len(result.includes) == 1
+        assert "included_locations.conf" in result.includes[0]
+        assert len(result.resolved_includes) == 0
+        assert len(result.included_configs) == 0
+
+    def test_include_resolution(self, parser):
+        """Test that includes are resolved when requested."""
+        config_file = FIXTURES_DIR / "main_with_includes.conf"
+        result = parser.parse_config_file(config_file, resolve_includes=True)
+
+        assert result is not None
+        assert len(result.includes) == 1
+        assert len(result.resolved_includes) >= 1
+        assert any("included_locations.conf" in path for path in result.resolved_includes)
+
+    def test_included_configs_parsed(self, parser):
+        """Test that included files are actually parsed."""
+        config_file = FIXTURES_DIR / "main_with_includes.conf"
+        result = parser.parse_config_file(config_file, resolve_includes=True)
+
+        assert result is not None
+        assert len(result.included_configs) >= 1
+
+        # The included config should have locations
+        included = result.included_configs[0]
+        # Included config is a fragment, may have server blocks or just locations
+        # depending on how crossplane parses it
+
+    def test_circular_include_detection(self, parser):
+        """Test that circular includes are detected and handled."""
+        config_file = FIXTURES_DIR / "circular_include_a.conf"
+        result = parser.parse_config_file(config_file, resolve_includes=True)
+
+        # Should not crash or hang, should return valid result
+        assert result is not None
+        # The circular file should only be included once
+        # and not cause infinite recursion
+
+    def test_nonexistent_include_handled(self, parser):
+        """Test that nonexistent include patterns don't cause errors."""
+        # Create a temp config with nonexistent include
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as f:
+            f.write("""
+server {
+    listen 80;
+    server_name test.local;
+    include /nonexistent/path/*.conf;
+}
+""")
+            temp_path = f.name
+
+        try:
+            result = parser.parse_config_file(Path(temp_path), resolve_includes=True)
+            assert result is not None
+            assert len(result.includes) == 1
+            # No files matched, so resolved_includes should be empty or have none for that pattern
+        finally:
+            os.unlink(temp_path)
+
+    def test_glob_pattern_resolution(self, parser):
+        """Test that glob patterns in includes are resolved."""
+        # Use wildcards to include all conf files
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False, dir=str(FIXTURES_DIR)) as f:
+            f.write(f"""
+server {{
+    listen 80;
+    server_name glob-test.local;
+    include {FIXTURES_DIR}/simple_*.conf;
+}}
+""")
+            temp_path = f.name
+
+        try:
+            result = parser.parse_config_file(Path(temp_path), resolve_includes=True)
+            assert result is not None
+            # Should have resolved the simple_static.conf file
+            assert any("simple_static.conf" in path for path in result.resolved_includes)
+        finally:
+            os.unlink(temp_path)

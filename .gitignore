@@ -73,3 +73,11 @@ temp/
 # Backup files
 *.bak
 *.backup
+
+# Persistent data directory (contains secrets)
+# These directories contain SSL private keys, database, and logs
+data/ssl/**
+data/api-backups/**
+data/api-logs/**
+data/nginx-logs/**
+data/acme-challenge/**

@@ -24,3 +24,11 @@ docker>=7.0.0
 
 # Database
 aiosqlite>=0.19.0
+
+# SSL/ACME certificate management
+acme>=2.0.0
+cryptography>=41.0.0
+josepy>=1.13.0
+
+# Background task scheduling
+APScheduler>=3.10.0
