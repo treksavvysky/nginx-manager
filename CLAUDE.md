@@ -50,12 +50,14 @@ Client (AI Agents / REST API)
 
 **Key modules:**
 - `api/main.py` - FastAPI app setup, lifespan manager, root/health endpoints
-- `api/endpoints/sites.py` - Site configuration endpoints (GET /sites/, GET /sites/{site_name})
+- `api/endpoints/sites.py` - Site CRUD endpoints (list, get, create, update, delete, enable, disable)
 - `api/endpoints/nginx.py` - NGINX control endpoints (reload, restart, status, test)
 - `api/endpoints/transactions.py` - Transaction history and rollback endpoints
 - `api/endpoints/events.py` - Event audit log endpoints
 - `api/core/config_manager/crossplane_parser.py` - Crossplane-based NGINX parser (full directive support)
 - `api/core/config_manager/adapter.py` - Converts parsed config to API response format
+- `api/core/config_generator/generator.py` - Jinja2-based NGINX config generator
+- `api/core/config_generator/templates/` - NGINX config templates (static_site, reverse_proxy)
 - `api/core/docker_service.py` - Docker SDK wrapper for NGINX container management
 - `api/core/health_checker.py` - HTTP health verification with retries
 - `api/core/transaction_manager.py` - Transaction lifecycle management with snapshots
@@ -66,6 +68,7 @@ Client (AI Agents / REST API)
 - `api/models/transaction.py` - Transaction, TransactionDetail, RollbackResult models
 - `api/models/event.py` - Event, EventFilters models
 - `api/models/config.py` - Pydantic models: SiteConfig, SiteConfigResponse, ConfigValidationResult
+- `api/models/site_requests.py` - Site CRUD request/response models: SiteCreateRequest, SiteUpdateRequest, SiteMutationResponse
 - `api/config.py` - Pydantic BaseSettings for environment configuration
 
 **Docker setup:**
@@ -90,6 +93,6 @@ Environment variables managed via Pydantic BaseSettings in `api/config.py`:
 
 ## Current Limitations
 
-- Site CRUD operations not yet implemented (read-only for sites)
 - No authentication/authorization
 - No SSL certificate automation
+- No web dashboard (API only)

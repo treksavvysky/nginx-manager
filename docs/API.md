@@ -550,28 +550,27 @@ Get detailed information about a specific event.
   },
   "source": "api"
 }
+```
 
 ---
 
-#### GET /certificates/
-List all SSL certificates.
+### Planned Endpoints (Phase 3+)
 
-#### POST /certificates/
-Request new Let's Encrypt certificate.
+The following endpoints are planned for future releases:
 
-#### GET /certificates/{domain}
-Get certificate details and expiry information.
+#### SSL Certificates (Phase 3)
+```
+GET    /certificates/           # List all SSL certificates
+POST   /certificates/           # Request new Let's Encrypt certificate
+GET    /certificates/{domain}   # Get certificate details and expiry
+POST   /certificates/{domain}/renew  # Trigger manual renewal
+```
 
-#### POST /certificates/{domain}/renew
-Trigger manual certificate renewal.
-
----
-
-#### GET /backups/
-List available configuration backups.
-
-#### POST /backups/{id}/restore
-Restore configuration from a backup.
+#### Backups (Phase 3)
+```
+GET    /backups/               # List available configuration backups
+POST   /backups/{id}/restore   # Restore configuration from a backup
+```
 
 ---
 
