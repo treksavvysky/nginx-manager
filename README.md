@@ -66,10 +66,10 @@ nginx-manager/
 
 ## 🚀 Development Approach
 
-### Current Phase: Playground VPS Setup
-- **Target**: Fresh VPS environment for safe experimentation
-- **Goal**: Establish best practices and error-free deployment patterns
-- **Strategy**: Build, break, learn, improve
+### Current Phase: AI-Native Core (Phase 2)
+- **Completed**: Parser upgrade (crossplane), NGINX control endpoints
+- **In Progress**: Transaction model, rich context responses, site CRUD
+- **Strategy**: Build foundational AI-agent patterns before adding features
 
 ### Key Design Decisions
 - **Config Storage**: Hybrid approach - files as source of truth, database for metadata
@@ -145,10 +145,16 @@ GET    /ssl/alerts          # Certificates needing attention
 POST   /ssl/setup/{domain}  # Initial SSL setup for domain
 ```
 
-### NGINX Operations
+### NGINX Operations (Implemented)
 ```
-POST   /nginx/reload        # Test and reload configuration
-GET    /nginx/status        # NGINX service status
+POST   /nginx/reload        # Graceful reload with health verification
+POST   /nginx/restart       # Full restart with health verification
+GET    /nginx/status        # Container status, uptime, health
+POST   /nginx/test          # Validate config with nginx -t
+```
+
+### NGINX Operations (Planned)
+```
 POST   /nginx/backup        # Create configuration backup
 POST   /nginx/restore       # Restore from backup
 GET    /nginx/logs          # Access recent logs

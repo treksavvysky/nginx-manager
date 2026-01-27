@@ -18,6 +18,8 @@ services:
       - api-backups:/var/backups/nginx
       # Development: mount source code for hot reload
       - ../../api:/app/api
+      # Docker socket for container management
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - API_DEBUG=true
       - API_RELOAD=true

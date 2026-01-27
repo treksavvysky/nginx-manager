@@ -162,3 +162,91 @@ class ParsedNginxConfig(BaseModel):
         default_factory=list,
         description="Full crossplane output for advanced use"
     )
+
+
+# =============================================================================
+# NGINX Control Models (for container management endpoints)
+# =============================================================================
+
+from enum import Enum
+
+
+class NginxProcessStatus(str, Enum):
+    """NGINX process/container status."""
+    RUNNING = "running"
+    STOPPED = "stopped"
+    RESTARTING = "restarting"
+    ERROR = "error"
+    UNKNOWN = "unknown"
+
+
+class NginxOperationResult(BaseModel):
+    """Result of an NGINX control operation (reload/restart)."""
+
+    success: bool = Field(..., description="Whether the operation completed successfully")
+    operation: str = Field(..., description="The operation performed (reload/restart/test)")
+    message: str = Field(..., description="Human-readable result message")
+    timestamp: datetime = Field(
+        default_factory=datetime.now,
+        description="When the operation was performed"
+    )
+    duration_ms: Optional[int] = Field(None, description="Operation duration in milliseconds")
+    health_verified: bool = Field(
+        default=False,
+        description="Whether health check passed after operation"
+    )
+    previous_state: Optional[str] = Field(None, description="Container state before operation")
+    current_state: Optional[str] = Field(None, description="Container state after operation")
+
+
+class NginxStatusResponse(BaseModel):
+    """Detailed NGINX status information."""
+
+    status: NginxProcessStatus = Field(..., description="Current NGINX process status")
+    container_id: Optional[str] = Field(None, description="Docker container ID (short)")
+    container_name: str = Field(..., description="Docker container name")
+    uptime_seconds: Optional[int] = Field(None, description="Container uptime in seconds")
+    started_at: Optional[datetime] = Field(None, description="When the container was started")
+
+    # Process info
+    master_pid: Optional[int] = Field(None, description="NGINX master process PID")
+    worker_count: Optional[int] = Field(None, description="Number of worker processes")
+
+    # Connection stats (from stub_status if available)
+    active_connections: Optional[int] = Field(None, description="Active client connections")
+    accepts: Optional[int] = Field(None, description="Total accepted connections")
+    handled: Optional[int] = Field(None, description="Total handled connections")
+    requests: Optional[int] = Field(None, description="Total client requests")
+    reading: Optional[int] = Field(None, description="Connections reading request")
+    writing: Optional[int] = Field(None, description="Connections writing response")
+    waiting: Optional[int] = Field(None, description="Keep-alive connections waiting")
+
+    # Health
+    health_status: str = Field(default="unknown", description="Container health check status")
+    last_health_check: Optional[datetime] = Field(
+        None,
+        description="When health was last verified"
+    )
+
+    # Configuration
+    config_test_result: Optional[bool] = Field(
+        None,
+        description="Result of last nginx -t"
+    )
+
+
+class NginxConfigTestResult(BaseModel):
+    """Result of NGINX configuration test (nginx -t)."""
+
+    success: bool = Field(..., description="Whether configuration is valid")
+    message: str = Field(..., description="Result message from nginx -t")
+    stdout: Optional[str] = Field(None, description="Standard output from test")
+    stderr: Optional[str] = Field(None, description="Standard error from test (contains result)")
+    tested_at: datetime = Field(
+        default_factory=datetime.now,
+        description="When the test was performed"
+    )
+    config_file: str = Field(
+        default="/etc/nginx/nginx.conf",
+        description="Configuration file tested"
+    )

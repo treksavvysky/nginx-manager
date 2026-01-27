@@ -50,16 +50,18 @@ The following principles guide all development decisions:
 
 ## Phase 2: AI-Native Core
 
-**Status: Next Up**
+**Status: In Progress**
 
 This phase establishes the foundation for reliable AI agent interaction. The parser upgrade is a prerequisite—AI agents cannot trust a system that misparses configurations. The transaction model and rich context patterns must be in place before adding more operations.
 
 ### 2.1 Parser Upgrade (Foundation)
-- [ ] Replace regex parser with `crossplane` library
-- [ ] Full directive support including nested blocks
+- [x] Replace regex parser with `crossplane` library
+- [x] Full directive support including nested blocks
+- [x] Upstream block parsing
+- [x] Location block parsing with regex support
+- [x] Rich data models (ServerBlock, LocationBlock, UpstreamBlock, SSLConfig)
+- [x] Backward-compatible adapter for legacy response format
 - [ ] Include file resolution (`include` directives)
-- [ ] Upstream block parsing
-- [ ] Location block parsing with regex support
 - [ ] Map and geo directive parsing
 
 **Rationale**: Reliable parsing is a prerequisite for AI trust. An agent that sees incorrect configuration data will make incorrect decisions. This is not optional cleanup—it's foundational.
@@ -96,10 +98,12 @@ This phase establishes the foundation for reliable AI agent interaction. The par
 - [ ] Suggested actions in every response
 
 ### 2.6 NGINX Control
-- [ ] `POST /nginx/reload` - Graceful reload with health verification
-- [ ] `POST /nginx/restart` - Full restart with health verification
-- [ ] `GET /nginx/status` - Process status, active connections, what's serving traffic
-- [ ] `POST /nginx/test` - Validate all configurations
+- [x] `POST /nginx/reload` - Graceful reload with health verification
+- [x] `POST /nginx/restart` - Full restart with health verification
+- [x] `GET /nginx/status` - Container status, uptime, health info
+- [x] `POST /nginx/test` - Validate all configurations with `nginx -t`
+- [x] Docker SDK integration for container management
+- [x] Health checker with configurable retries
 - [ ] Automatic rollback if reload fails health check
 
 ### 2.7 MCP Interface Design (Design Only)
@@ -270,12 +274,13 @@ Dashboard is lowest priority for an AI-first tool—but valuable for monitoring 
 ## Testing Strategy
 
 ### Unit Tests
-- [ ] Parser tests with complex NGINX configs
+- [x] Parser tests with complex NGINX configs (18 tests)
+- [x] NGINX endpoint tests with mocked Docker service (15 tests)
 - [ ] Model validation tests
 - [ ] Transaction/rollback logic tests
 
 ### Integration Tests
-- [ ] API endpoint tests with actual NGINX container
+- [x] API endpoint tests with actual NGINX container
 - [ ] SSL workflow tests (requires staging Let's Encrypt)
 - [ ] MCP protocol compliance tests
 

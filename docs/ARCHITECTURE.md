@@ -202,9 +202,18 @@ API endpoints are designed to map cleanly to MCP primitives. Response formats ar
 ### Core Services (`api/core/`)
 
 #### ConfigManager (`config_manager/`)
-- **Parser** (`parser.py`): Extracts data from NGINX config files
-- **Validator** (planned): Runs `nginx -t` for syntax validation
+- **CrossplaneParser** (`crossplane_parser.py`): Full NGINX config parsing via crossplane library
+- **Adapter** (`adapter.py`): Converts parsed config to API response format
 - **Generator** (planned): Creates NGINX configs from structured data
+
+#### DockerService (`docker_service.py`)
+- Docker SDK wrapper for NGINX container management
+- Container status, reload, restart operations
+- Command execution within containers (`nginx -t`, etc.)
+
+#### HealthChecker (`health_checker.py`)
+- HTTP health verification with configurable retries
+- Used after reload/restart to verify NGINX is responding
 
 #### CertManager (Phase 3)
 - ACME client for Let's Encrypt
@@ -226,6 +235,7 @@ services:
     volumes:
       - nginx_conf:/etc/nginx/conf.d:ro  # Read configs
       - backups:/var/backups/nginx       # Write backups
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Container control
     depends_on: [nginx]
 
   nginx:
@@ -235,6 +245,8 @@ services:
       - nginx_conf:/etc/nginx/conf.d     # Serve configs
       - ssl_certs:/etc/ssl/certs         # SSL certificates
 ```
+
+**Docker Socket**: The API container mounts the Docker socket (read-only) to manage the NGINX container. This enables reload, restart, status checks, and config testing via the Docker SDK.
 
 ## Data Flow
 
@@ -288,25 +300,21 @@ Return success response
 
 ## Design Decisions
 
-### Why Regex-Based Parser? (MVP Only)
+### Why Crossplane Parser?
 
-**Decision**: Use regex patterns for MVP, upgrade to `crossplane` in Phase 2.
+**Decision**: Use `crossplane` library for NGINX config parsing.
 
-**MVP Rationale**:
-- Simpler implementation to validate concept
-- Handles common use cases for initial testing
-- Avoids external dependencies in Phase 1
-
-**Phase 2 Upgrade Rationale**:
+**Rationale**:
 - AI agents require reliable parsing—incorrect data leads to incorrect decisions
-- Regex cannot handle nested blocks, includes, or complex directives
-- `crossplane` provides full NGINX syntax support with proven reliability
-- Parser reliability is a prerequisite for AI trust, not optional cleanup
+- Crossplane is NGINX Inc's official parser with full syntax support
+- Handles nested blocks, includes, upstreams, and complex directives
+- Parser reliability is a prerequisite for AI trust
 
-**Trade-offs of Regex (being addressed in Phase 2)**:
-- Cannot parse all NGINX syntax
-- Misses nested structures (location blocks, upstreams)
-- No include file resolution
+**Implementation Details**:
+- `crossplane_parser.py` wraps the library with rich data models
+- `adapter.py` converts to legacy flat format for backward compatibility
+- Uses `check_ctx=False` to parse fragment configs (conf.d files)
+- Returns structured `ParsedNginxConfig` with server blocks, locations, upstreams
 
 ### Why Separate Containers?
 

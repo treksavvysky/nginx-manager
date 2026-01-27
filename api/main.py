@@ -16,7 +16,7 @@ import uvicorn
 import logging
 from datetime import datetime
 
-from endpoints import sites
+from endpoints import sites, nginx
 from config import settings
 
 # Configure logging
@@ -75,6 +75,7 @@ app = FastAPI(
 
 # Include API routers
 app.include_router(sites.router)
+app.include_router(nginx.router)
 
 # CORS middleware for web interface compatibility
 app.add_middleware(
@@ -125,16 +126,45 @@ async def root():
 async def health_check():
     """
     Detailed health check endpoint for monitoring and AI agent verification.
-    
+
     This endpoint provides comprehensive status information about:
     - API service health
-    - NGINX container status (when implemented)
+    - NGINX container status
     - Configuration validation capabilities
     - SSL certificate management status
-    
+
     Returns:
         dict: Detailed health status and system information
     """
+    from core.docker_service import docker_service, DockerServiceError
+
+    # Check NGINX container status
+    nginx_status = {
+        "status": "unknown",
+        "message": "Unable to determine NGINX status"
+    }
+
+    try:
+        container_status = await docker_service.get_container_status()
+        if container_status.get("running"):
+            nginx_status = {
+                "status": "running",
+                "container_id": container_status.get("container_id"),
+                "uptime_seconds": container_status.get("uptime_seconds"),
+                "health_status": container_status.get("health_status", "unknown")
+            }
+        else:
+            nginx_status = {
+                "status": container_status.get("status", "stopped"),
+                "message": "NGINX container is not running"
+            }
+    except DockerServiceError as e:
+        nginx_status = {
+            "status": "error",
+            "message": e.message,
+            "suggestion": e.suggestion
+        }
+
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
@@ -142,12 +172,9 @@ async def health_check():
             "status": "running",
             "version": "0.1.0"
         },
-        "nginx": {
-            "status": "not_connected",  # Will be implemented
-            "message": "NGINX management not yet implemented"
-        },
+        "nginx": nginx_status,
         "ssl": {
-            "status": "not_configured",  # Will be implemented
+            "status": "not_configured",
             "message": "SSL management not yet implemented"
         }
     }

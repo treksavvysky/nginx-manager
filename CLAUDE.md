@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-NGINX Manager is an AI-agent-first REST API for managing NGINX configurations, SSL certificates, and reverse proxy setups. Built with FastAPI (Python 3.13), designed for integration with AI systems (Custom GPTs, Claude MCP). Currently MVP with read-only API; CRUD operations planned for Phase 2.
+NGINX Manager is an AI-agent-first REST API for managing NGINX configurations, SSL certificates, and reverse proxy setups. Built with FastAPI (Python 3.12), designed for integration with AI systems (Custom GPTs, Claude MCP). Features crossplane-based config parsing and Docker-based NGINX container control.
 
 ## Commands
 
@@ -51,9 +51,12 @@ Client (AI Agents / REST API)
 **Key modules:**
 - `api/main.py` - FastAPI app setup, lifespan manager, root/health endpoints
 - `api/endpoints/sites.py` - Site configuration endpoints (GET /sites/, GET /sites/{site_name})
+- `api/endpoints/nginx.py` - NGINX control endpoints (reload, restart, status, test)
 - `api/core/config_manager/crossplane_parser.py` - Crossplane-based NGINX parser (full directive support)
 - `api/core/config_manager/adapter.py` - Converts parsed config to API response format
-- `api/models/nginx.py` - Rich data models: ServerBlock, LocationBlock, UpstreamBlock, SSLConfig
+- `api/core/docker_service.py` - Docker SDK wrapper for NGINX container management
+- `api/core/health_checker.py` - HTTP health verification with retries
+- `api/models/nginx.py` - Rich data models: ServerBlock, LocationBlock, UpstreamBlock, SSLConfig, NginxOperationResult
 - `api/models/config.py` - Pydantic models: SiteConfig, SiteConfigResponse, ConfigValidationResult
 - `api/config.py` - Pydantic BaseSettings for environment configuration
 
@@ -69,10 +72,13 @@ Environment variables managed via Pydantic BaseSettings in `api/config.py`:
 - `NGINX_CONF_DIR`, `BACKUP_DIR`, `SSL_CERT_DIR` - Path configurations
 - `API_DEBUG` - Enable debug mode and verbose logging
 - `VALIDATE_BEFORE_DEPLOY`, `AUTO_BACKUP` - Safety flags
+- `NGINX_CONTAINER_NAME` - Docker container name for NGINX (default: nginx-manager-nginx)
+- `NGINX_HEALTH_ENDPOINT` - HTTP endpoint to verify NGINX health
+- `NGINX_OPERATION_TIMEOUT`, `NGINX_HEALTH_CHECK_RETRIES`, `NGINX_HEALTH_CHECK_INTERVAL` - Operation settings
 
 ## Current Limitations
 
-- Read-only API (no POST/PUT/DELETE yet)
+- Site CRUD operations not yet implemented (read-only for sites)
 - No authentication/authorization
 - No database (file-based storage only)
 - No SSL certificate automation

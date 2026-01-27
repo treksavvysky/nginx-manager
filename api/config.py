@@ -24,6 +24,33 @@ class Settings(BaseSettings):
     nginx_main_conf: str = Field(default="/etc/nginx/nginx.conf", alias="NGINX_MAIN_CONF")
     nginx_binary: str = Field(default="/usr/sbin/nginx", alias="NGINX_BINARY")
     nginx_backup_dir: str = Field(default="/var/backups/nginx", alias="NGINX_BACKUP_DIR")
+
+    # NGINX Container Configuration
+    nginx_container_name: str = Field(
+        default="nginx-manager-nginx",
+        alias="NGINX_CONTAINER_NAME",
+        description="Docker container name for NGINX"
+    )
+    nginx_health_endpoint: str = Field(
+        default="http://nginx-manager-nginx/health",
+        alias="NGINX_HEALTH_ENDPOINT",
+        description="HTTP endpoint to verify NGINX health"
+    )
+    nginx_operation_timeout: int = Field(
+        default=30,
+        alias="NGINX_OPERATION_TIMEOUT",
+        description="Timeout in seconds for NGINX operations"
+    )
+    nginx_health_check_retries: int = Field(
+        default=5,
+        alias="NGINX_HEALTH_CHECK_RETRIES",
+        description="Number of health check retry attempts"
+    )
+    nginx_health_check_interval: float = Field(
+        default=1.0,
+        alias="NGINX_HEALTH_CHECK_INTERVAL",
+        description="Seconds between health check retries"
+    )
     
     # SSL Configuration
     letsencrypt_dir: str = Field(default="/etc/letsencrypt", alias="LETSENCRYPT_DIR")
