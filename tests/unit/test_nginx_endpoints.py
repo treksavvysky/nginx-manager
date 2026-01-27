@@ -494,6 +494,7 @@ class TestHealthEndpoint:
 
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == "healthy"
+            # When Docker is unavailable, system should report unhealthy
+            assert data["status"] == "unhealthy"
             assert data["nginx"]["status"] == "error"
             assert "suggestion" in data["nginx"]

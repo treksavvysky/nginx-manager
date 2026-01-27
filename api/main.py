@@ -142,6 +142,7 @@ async def health_check():
     This endpoint provides comprehensive status information about:
     - API service health
     - NGINX container status
+    - Site configuration summary
     - Configuration validation capabilities
     - SSL certificate management status
 
@@ -149,16 +150,22 @@ async def health_check():
         dict: Detailed health status and system information
     """
     from core.docker_service import docker_service, DockerServiceError
+    from config import get_nginx_conf_path
+    from core.context_helpers import get_system_state_summary
 
     # Check NGINX container status
     nginx_status = {
         "status": "unknown",
         "message": "Unable to determine NGINX status"
     }
+    nginx_running = False
+    nginx_healthy = False
 
     try:
         container_status = await docker_service.get_container_status()
         if container_status.get("running"):
+            nginx_running = True
+            nginx_healthy = container_status.get("health_status") == "healthy"
             nginx_status = {
                 "status": "running",
                 "container_id": container_status.get("container_id"),
@@ -177,14 +184,65 @@ async def health_check():
             "suggestion": e.suggestion
         }
 
+    # Count sites
+    conf_dir = get_nginx_conf_path()
+    enabled_sites = 0
+    disabled_sites = 0
+    try:
+        enabled_sites = len(list(conf_dir.glob("*.conf")))
+        disabled_sites = len(list(conf_dir.glob("*.conf.disabled")))
+    except Exception:
+        pass  # Directory may not exist in some test environments
+
+    total_sites = enabled_sites + disabled_sites
+
+    # Build system state summary
+    system_state = get_system_state_summary(
+        nginx_running=nginx_running,
+        nginx_healthy=nginx_healthy,
+        total_sites=total_sites,
+        enabled_sites=enabled_sites,
+        disabled_sites=disabled_sites
+    )
+
+    # Generate suggestions based on state
+    suggestions = []
+    if not nginx_running:
+        suggestions.append({
+            "action": "Start the NGINX container",
+            "reason": "NGINX is not running",
+            "priority": "high"
+        })
+    if enabled_sites == 0 and total_sites == 0:
+        suggestions.append({
+            "action": "Create your first site",
+            "reason": "No sites are configured yet",
+            "endpoint": "POST /sites/",
+            "priority": "medium"
+        })
+    if disabled_sites > 0:
+        suggestions.append({
+            "action": f"Review {disabled_sites} disabled site(s)",
+            "reason": "Some sites are disabled and not serving traffic",
+            "endpoint": "GET /sites/",
+            "priority": "low"
+        })
+
     return {
-        "status": "healthy",
+        "status": "healthy" if nginx_healthy else ("degraded" if nginx_running else "unhealthy"),
         "timestamp": datetime.now().isoformat(),
         "api": {
             "status": "running",
             "version": "0.1.0"
         },
         "nginx": nginx_status,
+        "sites": {
+            "total": total_sites,
+            "enabled": enabled_sites,
+            "disabled": disabled_sites
+        },
+        "system_state": system_state,
+        "suggestions": suggestions,
         "ssl": {
             "status": "not_configured",
             "message": "SSL management not yet implemented"

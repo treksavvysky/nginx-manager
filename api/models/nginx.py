@@ -214,6 +214,16 @@ class NginxOperationResult(BaseModel):
         description="Transaction ID of the rollback operation (if auto_rolled_back is True)"
     )
 
+    # Rich context for AI agents
+    suggestions: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Suggested next actions based on the operation result"
+    )
+    warnings: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Non-blocking warnings about the current state"
+    )
+
 
 class NginxStatusResponse(BaseModel):
     """Detailed NGINX status information."""

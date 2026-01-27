@@ -77,11 +77,11 @@ This phase establishes the foundation for reliable AI agent interaction. The par
 - [x] Configurable retention policy for transaction history
 
 ### 2.3 Rich Context Responses
-- [ ] All responses include current system state summary
-- [ ] Mutation responses return: what changed, what's now active, suggested next steps
-- [ ] Error responses include: why it failed, how to fix it, related context
-- [ ] `suggestions` field in all responses with contextual guidance
-- [ ] `warnings` field for non-blocking issues (e.g., "SSL cert expires in 7 days")
+- [x] All responses include current system state summary
+- [x] Mutation responses return: what changed, what's now active, suggested next steps
+- [x] Error responses include: why it failed, how to fix it, related context
+- [x] `suggestions` field in all responses with contextual guidance
+- [x] `warnings` field for non-blocking issues (e.g., "SSL cert expires in 7 days")
 
 ### 2.4 Predictive Operations
 - [x] `?dry_run=true` query parameter on all mutation endpoints

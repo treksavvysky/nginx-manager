@@ -18,6 +18,14 @@ from core.config_manager import nginx_parser, ConfigAdapter
 from core.config_generator import get_config_generator, ConfigGeneratorError
 from core.docker_service import docker_service, DockerServiceError
 from core.transaction_context import transactional_operation
+from core.context_helpers import (
+    get_site_create_suggestions,
+    get_site_update_suggestions,
+    get_site_delete_suggestions,
+    get_site_enable_suggestions,
+    get_site_disable_suggestions,
+    get_config_warnings,
+)
 from models.config import SiteConfigResponse
 from models.site_requests import (
     SiteCreateRequest,
@@ -447,6 +455,21 @@ async def create_site(
                 except DockerServiceError as e:
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
+            # Generate suggestions and warnings
+            suggestions = get_site_create_suggestions(
+                site_name=request.name,
+                site_type=request.site_type.value,
+                reloaded=reloaded,
+                enabled=True
+            )
+            config_warnings = get_config_warnings(
+                ssl_enabled=False,
+                has_ssl_cert=False,
+                listen_ports=[request.listen_port],
+                proxy_pass=request.proxy_pass,
+                root_path=request.root_path
+            )
+
             return SiteMutationResponse(
                 success=True,
                 message=f"Site '{request.name}' created successfully",
@@ -455,7 +478,9 @@ async def create_site(
                 file_path=str(conf_file),
                 reload_required=not reloaded,
                 reloaded=reloaded,
-                enabled=True
+                enabled=True,
+                suggestions=suggestions,
+                warnings=config_warnings
             )
 
         except HTTPException:
@@ -661,6 +686,20 @@ async def update_site(
                 except DockerServiceError as e:
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
+            # Generate suggestions and warnings
+            suggestions = get_site_update_suggestions(
+                site_name=site_name,
+                reloaded=reloaded,
+                changes_made=[]  # Could track specific changes
+            )
+            config_warnings = get_config_warnings(
+                ssl_enabled=False,
+                has_ssl_cert=False,
+                listen_ports=[create_request.listen_port],
+                proxy_pass=create_request.proxy_pass,
+                root_path=create_request.root_path
+            )
+
             return SiteMutationResponse(
                 success=True,
                 message=f"Site '{site_name}' updated successfully",
@@ -669,7 +708,9 @@ async def update_site(
                 file_path=str(conf_file),
                 reload_required=not reloaded,
                 reloaded=reloaded,
-                enabled=True
+                enabled=True,
+                suggestions=suggestions,
+                warnings=config_warnings
             )
 
         except HTTPException:
@@ -792,6 +833,13 @@ async def delete_site(
                 except DockerServiceError as e:
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
+            # Generate suggestions
+            suggestions = get_site_delete_suggestions(
+                site_name=site_name,
+                reloaded=reloaded,
+                was_enabled=was_enabled
+            )
+
             return SiteDeleteResponse(
                 success=True,
                 message=f"Site '{site_name}' deleted successfully",
@@ -799,7 +847,8 @@ async def delete_site(
                 transaction_id=ctx.id,
                 file_path=str(target_file),
                 reload_required=was_enabled and not reloaded,
-                reloaded=reloaded
+                reloaded=reloaded,
+                suggestions=suggestions
             )
 
         except HTTPException:
@@ -953,6 +1002,12 @@ async def enable_site(
                 except DockerServiceError as e:
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
+            # Generate suggestions
+            suggestions = get_site_enable_suggestions(
+                site_name=site_name,
+                reloaded=reloaded
+            )
+
             return SiteMutationResponse(
                 success=True,
                 message=f"Site '{site_name}' enabled successfully",
@@ -961,7 +1016,8 @@ async def enable_site(
                 file_path=str(conf_file),
                 reload_required=not reloaded,
                 reloaded=reloaded,
-                enabled=True
+                enabled=True,
+                suggestions=suggestions
             )
 
         except HTTPException:
@@ -1088,6 +1144,12 @@ async def disable_site(
                 except DockerServiceError as e:
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
+            # Generate suggestions
+            suggestions = get_site_disable_suggestions(
+                site_name=site_name,
+                reloaded=reloaded
+            )
+
             return SiteMutationResponse(
                 success=True,
                 message=f"Site '{site_name}' disabled successfully",
@@ -1096,7 +1158,8 @@ async def disable_site(
                 file_path=str(disabled_file),
                 reload_required=not reloaded,
                 reloaded=reloaded,
-                enabled=False
+                enabled=False,
+                suggestions=suggestions
             )
 
         except HTTPException:

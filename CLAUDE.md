@@ -63,6 +63,7 @@ Client (AI Agents / REST API)
 - `api/core/transaction_manager.py` - Transaction lifecycle management with snapshots
 - `api/core/event_store.py` - Event persistence and querying
 - `api/core/snapshot_service.py` - Configuration state capture and restoration
+- `api/core/context_helpers.py` - Generates suggestions and warnings for AI-friendly responses
 - `api/core/database.py` - SQLite async database management
 - `api/models/nginx.py` - Rich data models: ServerBlock, LocationBlock, UpstreamBlock, SSLConfig, NginxOperationResult
 - `api/models/transaction.py` - Transaction, TransactionDetail, RollbackResult models
@@ -93,10 +94,12 @@ Environment variables managed via Pydantic BaseSettings in `api/config.py`:
 
 ## Key Features
 
+- **Rich Context Responses**: All responses include `suggestions` and `warnings` fields for AI guidance
 - **Dry-Run Mode**: All mutation endpoints support `?dry_run=true` to preview changes without applying them
 - **Transaction System**: All changes create transactions with snapshots for rollback capability
 - **Auto-Rollback**: If health check fails after NGINX reload, configuration automatically rolls back
 - **Config Validation**: All config changes validated with `nginx -t` before deployment
+- **System State Summary**: Health endpoint provides comprehensive system state for AI situational awareness
 
 ## Current Limitations
 

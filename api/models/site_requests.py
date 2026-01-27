@@ -232,6 +232,16 @@ class SiteMutationResponse(BaseModel):
         description="When the operation was performed"
     )
 
+    # Rich context for AI agents
+    suggestions: List[Dict] = Field(
+        default_factory=list,
+        description="Suggested next actions based on the operation result"
+    )
+    warnings: List[Dict] = Field(
+        default_factory=list,
+        description="Non-blocking warnings about the configuration"
+    )
+
 
 class SiteDeleteResponse(BaseModel):
     """Response from site deletion."""
@@ -247,6 +257,16 @@ class SiteDeleteResponse(BaseModel):
     reloaded: bool = Field(
         default=False,
         description="Whether NGINX was reloaded"
+    )
+
+    # Rich context for AI agents
+    suggestions: List[Dict] = Field(
+        default_factory=list,
+        description="Suggested next actions based on the operation result"
+    )
+    warnings: List[Dict] = Field(
+        default_factory=list,
+        description="Non-blocking warnings about the configuration"
     )
 
 

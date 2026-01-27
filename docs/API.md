@@ -84,6 +84,89 @@ For `/nginx/reload` and `/nginx/restart`, dry-run validates configuration and sh
 
 ---
 
+## Rich Context Responses
+
+All mutation responses include AI-friendly context to help agents understand what happened and what to do next.
+
+### Suggestions Field
+
+Every mutation response includes a `suggestions` array with prioritized next steps:
+
+```json
+{
+  "suggestions": [
+    {
+      "action": "Reload NGINX to activate the new site",
+      "reason": "The site configuration has been created but NGINX hasn't loaded it yet",
+      "endpoint": "POST /nginx/reload",
+      "priority": "high"
+    },
+    {
+      "action": "Verify the upstream service is running",
+      "reason": "Reverse proxy requires the backend to be available",
+      "priority": "medium"
+    }
+  ]
+}
+```
+
+Priority levels:
+- `high`: Should be done immediately
+- `medium`: Important but not urgent
+- `low`: Optional verification steps
+
+### Warnings Field
+
+Responses include non-blocking warnings about potential issues:
+
+```json
+{
+  "warnings": [
+    {
+      "code": "localhost_proxy",
+      "message": "Proxying to localhost - ensure backend is accessible from NGINX container",
+      "suggestion": "Use container name or host.docker.internal instead of localhost"
+    }
+  ]
+}
+```
+
+Common warning codes:
+- `localhost_proxy`: Proxy to localhost may not work in containers
+- `port_443_no_ssl`: Listening on 443 without SSL enabled
+- `ssl_no_cert`: SSL enabled but no certificate configured
+
+### System State Summary
+
+The `/health` endpoint includes a comprehensive system state:
+
+```json
+{
+  "system_state": {
+    "nginx": {
+      "running": true,
+      "healthy": true,
+      "status": "healthy"
+    },
+    "sites": {
+      "total": 5,
+      "enabled": 4,
+      "disabled": 1
+    }
+  },
+  "suggestions": [
+    {
+      "action": "Review 1 disabled site(s)",
+      "reason": "Some sites are disabled and not serving traffic",
+      "endpoint": "GET /sites/",
+      "priority": "low"
+    }
+  ]
+}
+```
+
+---
+
 ## Endpoints
 
 ### Health & Status

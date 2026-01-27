@@ -67,8 +67,8 @@ nginx-manager/
 ## 🚀 Development Approach
 
 ### Current Phase: AI-Native Core (Phase 2)
-- **Completed**: Parser upgrade (crossplane), NGINX control endpoints, Transaction & Event model, Site CRUD, Dry-run mode, Auto-rollback
-- **In Progress**: Rich context responses, MCP interface design
+- **Completed**: Parser upgrade (crossplane), NGINX control endpoints, Transaction & Event model, Site CRUD, Dry-run mode, Auto-rollback, Rich context responses
+- **In Progress**: MCP interface design
 - **Next Phase**: SSL management (Phase 3)
 - **Strategy**: Build foundational AI-agent patterns before adding features
 

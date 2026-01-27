@@ -25,6 +25,10 @@ from core.docker_service import (
 from core.health_checker import health_checker, HealthCheckError
 from core.transaction_context import transactional_operation
 from core.transaction_manager import get_transaction_manager
+from core.context_helpers import (
+    get_nginx_reload_suggestions,
+    get_nginx_restart_suggestions,
+)
 from models.nginx import (
     NginxOperationResult,
     NginxStatusResponse,
@@ -247,6 +251,13 @@ async def reload_nginx(
         else:
             message = "NGINX configuration reloaded successfully"
 
+        # Generate suggestions
+        suggestions = get_nginx_reload_suggestions(
+            success=health_verified,
+            health_verified=health_verified,
+            auto_rolled_back=auto_rolled_back
+        )
+
         return NginxOperationResult(
             success=health_verified,
             operation="reload",
@@ -258,7 +269,8 @@ async def reload_nginx(
             transaction_id=transaction_id,
             auto_rolled_back=auto_rolled_back,
             rollback_reason=rollback_reason if auto_rolled_back else None,
-            rollback_transaction_id=rollback_transaction_id
+            rollback_transaction_id=rollback_transaction_id,
+            suggestions=suggestions
         )
 
     except DockerServiceError as e:
@@ -385,6 +397,12 @@ async def restart_nginx(
                 "health_verified": health_verified
             })
 
+            # Generate suggestions
+            suggestions = get_nginx_restart_suggestions(
+                success=True,
+                health_verified=health_verified
+            )
+
             return NginxOperationResult(
                 success=True,
                 operation="restart",
@@ -393,7 +411,8 @@ async def restart_nginx(
                 health_verified=health_verified,
                 previous_state=previous_state,
                 current_state=new_status.get("status", "unknown"),
-                transaction_id=ctx.id
+                transaction_id=ctx.id,
+                suggestions=suggestions
             )
 
     except DockerServiceError as e:
