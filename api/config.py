@@ -59,7 +59,39 @@ class Settings(BaseSettings):
     # Safety Settings
     validate_before_deploy: bool = Field(default=True, alias="VALIDATE_BEFORE_DEPLOY")
     auto_backup: bool = Field(default=True, alias="AUTO_BACKUP")
-    
+
+    # Transaction & Event Settings
+    transaction_db_path: str = Field(
+        default="/var/backups/nginx/transactions.db",
+        alias="TRANSACTION_DB_PATH",
+        description="Path to SQLite database for transactions/events"
+    )
+    snapshot_dir: str = Field(
+        default="/var/backups/nginx/snapshots",
+        alias="SNAPSHOT_DIR",
+        description="Directory for configuration snapshots"
+    )
+    snapshot_retention_days: int = Field(
+        default=30,
+        alias="SNAPSHOT_RETENTION_DAYS",
+        description="Days to retain transaction snapshots"
+    )
+    event_retention_days: int = Field(
+        default=90,
+        alias="EVENT_RETENTION_DAYS",
+        description="Days to retain event history"
+    )
+    auto_rollback_on_failure: bool = Field(
+        default=True,
+        alias="AUTO_ROLLBACK_ON_FAILURE",
+        description="Automatically rollback on operation failure"
+    )
+    max_snapshots: int = Field(
+        default=100,
+        alias="MAX_SNAPSHOTS",
+        description="Maximum number of snapshots to retain"
+    )
+
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     
@@ -82,8 +114,9 @@ def ensure_directories():
     """Ensure required directories exist (for development/testing)."""
     dirs_to_create = [
         settings.nginx_backup_dir,
+        settings.snapshot_dir,
     ]
-    
+
     for dir_path in dirs_to_create:
         Path(dir_path).mkdir(parents=True, exist_ok=True)
 

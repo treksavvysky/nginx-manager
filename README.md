@@ -67,8 +67,8 @@ nginx-manager/
 ## 🚀 Development Approach
 
 ### Current Phase: AI-Native Core (Phase 2)
-- **Completed**: Parser upgrade (crossplane), NGINX control endpoints
-- **In Progress**: Transaction model, rich context responses, site CRUD
+- **Completed**: Parser upgrade (crossplane), NGINX control endpoints, Transaction & Event model
+- **In Progress**: Rich context responses, site CRUD
 - **Strategy**: Build foundational AI-agent patterns before adding features
 
 ### Key Design Decisions
@@ -151,6 +151,21 @@ POST   /nginx/reload        # Graceful reload with health verification
 POST   /nginx/restart       # Full restart with health verification
 GET    /nginx/status        # Container status, uptime, health
 POST   /nginx/test          # Validate config with nginx -t
+```
+
+### Transactions & Rollback (Implemented)
+```
+GET    /transactions/              # List transactions with filtering
+GET    /transactions/{id}          # Get transaction details with diff
+POST   /transactions/{id}/rollback # Rollback to previous state
+GET    /transactions/{id}/can-rollback # Check rollback eligibility
+```
+
+### Event Audit Log (Implemented)
+```
+GET    /events/              # List events with filtering
+GET    /events/counts        # Event counts by severity
+GET    /events/{id}          # Get event details
 ```
 
 ### NGINX Operations (Planned)

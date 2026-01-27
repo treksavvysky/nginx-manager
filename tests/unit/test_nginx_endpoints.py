@@ -1,14 +1,15 @@
 """
 Unit tests for NGINX control endpoints.
 
-These tests mock the Docker service and health checker to test
-endpoint logic without requiring actual Docker connectivity.
+These tests mock the Docker service, health checker, and transaction context to test
+endpoint logic without requiring actual Docker connectivity or database.
 """
 
 import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, patch, MagicMock
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "api"))
@@ -23,6 +24,35 @@ from core.docker_service import (
     DockerUnavailableError,
 )
 from core.health_checker import HealthCheckError
+
+
+class MockTransactionContext:
+    """Mock transaction context for testing."""
+
+    def __init__(self, transaction_id: str = "test-txn-123"):
+        self.id = transaction_id
+        self.result_data = None
+        self.after_state = None
+        self.nginx_validated = False
+        self.health_verified = False
+
+    def set_result(self, result):
+        self.result_data = result
+
+    def set_after_state(self, state):
+        self.after_state = state
+
+    def set_nginx_validated(self, validated=True):
+        self.nginx_validated = validated
+
+    def set_health_verified(self, verified=True):
+        self.health_verified = verified
+
+
+@asynccontextmanager
+async def mock_transactional_operation(*args, **kwargs):
+    """Mock transactional_operation context manager."""
+    yield MockTransactionContext()
 
 
 class TestNginxStatus:
@@ -143,7 +173,8 @@ class TestNginxReload:
         }
 
         with patch("endpoints.nginx.docker_service") as mock_docker, \
-             patch("endpoints.nginx.health_checker") as mock_health:
+             patch("endpoints.nginx.health_checker") as mock_health, \
+             patch("endpoints.nginx.transactional_operation", mock_transactional_operation):
 
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
             mock_docker.reload_nginx = AsyncMock(return_value=(True, "", ""))
@@ -160,6 +191,7 @@ class TestNginxReload:
             assert data["success"] is True
             assert data["operation"] == "reload"
             assert data["health_verified"] is True
+            assert data["transaction_id"] == "test-txn-123"
 
     @pytest.mark.asyncio
     async def test_reload_failure(self):
@@ -169,7 +201,8 @@ class TestNginxReload:
             "running": True,
         }
 
-        with patch("endpoints.nginx.docker_service") as mock_docker:
+        with patch("endpoints.nginx.docker_service") as mock_docker, \
+             patch("endpoints.nginx.transactional_operation", mock_transactional_operation):
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
             mock_docker.reload_nginx = AsyncMock(
                 return_value=(False, "", "nginx: configuration file test failed")
@@ -195,7 +228,8 @@ class TestNginxReload:
         }
 
         with patch("endpoints.nginx.docker_service") as mock_docker, \
-             patch("endpoints.nginx.health_checker") as mock_health:
+             patch("endpoints.nginx.health_checker") as mock_health, \
+             patch("endpoints.nginx.transactional_operation", mock_transactional_operation):
 
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
             mock_docker.reload_nginx = AsyncMock(return_value=(True, "", ""))
@@ -228,6 +262,7 @@ class TestNginxRestart:
 
         with patch("endpoints.nginx.docker_service") as mock_docker, \
              patch("endpoints.nginx.health_checker") as mock_health, \
+             patch("endpoints.nginx.transactional_operation", mock_transactional_operation), \
              patch("asyncio.sleep", new_callable=AsyncMock):
 
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
@@ -244,11 +279,13 @@ class TestNginxRestart:
             data = response.json()
             assert data["success"] is True
             assert data["operation"] == "restart"
+            assert data["transaction_id"] == "test-txn-123"
 
     @pytest.mark.asyncio
     async def test_restart_container_not_found(self):
         """Test restart when container doesn't exist."""
-        with patch("endpoints.nginx.docker_service") as mock_docker:
+        with patch("endpoints.nginx.docker_service") as mock_docker, \
+             patch("endpoints.nginx.transactional_operation", mock_transactional_operation):
             mock_docker.get_container_status = AsyncMock(
                 side_effect=ContainerNotFoundError(
                     "Container not found",

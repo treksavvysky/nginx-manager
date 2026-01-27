@@ -194,7 +194,7 @@ Validate all NGINX configuration files with `nginx -t`.
 ```
 
 #### POST /nginx/reload
-Graceful NGINX reload with health verification.
+Graceful NGINX reload with health verification. Creates a transaction for audit and rollback.
 
 **Response**:
 ```json
@@ -206,12 +206,13 @@ Graceful NGINX reload with health verification.
   "duration_ms": 87,
   "health_verified": true,
   "previous_state": "running",
-  "current_state": "running"
+  "current_state": "running",
+  "transaction_id": "7996fe43-3d1d-40d4-a821-70e5db9da725"
 }
 ```
 
 #### POST /nginx/restart
-Full NGINX container restart with health verification.
+Full NGINX container restart with health verification. Creates a transaction for audit and rollback.
 
 **Response**:
 ```json
@@ -223,11 +224,196 @@ Full NGINX container restart with health verification.
   "duration_ms": 2550,
   "health_verified": true,
   "previous_state": "running",
-  "current_state": "running"
+  "current_state": "running",
+  "transaction_id": "a05f88cc-07ee-425f-a941-34ceb721d76a"
 }
 ```
 
 **Note**: Restart is a disruptive operation that drops active connections. Prefer `/nginx/reload` for configuration changes.
+
+---
+
+### Transactions & Rollback
+
+#### GET /transactions/
+List all transactions with optional filtering.
+
+**Query Parameters**:
+- `status` (optional): Filter by status (pending, in_progress, completed, failed, rolled_back)
+- `operation` (optional): Filter by operation type (nginx_reload, nginx_restart, etc.)
+- `resource_type` (optional): Filter by resource type (site, nginx, certificate)
+- `limit` (default: 50): Maximum transactions to return
+- `offset` (default: 0): Offset for pagination
+
+**Response**:
+```json
+{
+  "transactions": [
+    {
+      "id": "7996fe43-3d1d-40d4-a821-70e5db9da725",
+      "operation": "nginx_reload",
+      "status": "completed",
+      "resource_type": "nginx",
+      "resource_id": "nginx",
+      "created_at": "2026-01-27T01:04:24.476673",
+      "completed_at": "2026-01-27T01:04:24.572462",
+      "duration_ms": 89,
+      "error_message": null
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0,
+  "has_more": false
+}
+```
+
+#### GET /transactions/{transaction_id}
+Get detailed transaction information including diff.
+
+**Response**:
+```json
+{
+  "id": "7996fe43-3d1d-40d4-a821-70e5db9da725",
+  "operation": "nginx_reload",
+  "status": "completed",
+  "resource_type": "nginx",
+  "before_state": {
+    "files": ["example.com.conf", "api.example.com.conf"],
+    "total_size": 521
+  },
+  "after_state": {
+    "files": ["example.com.conf", "api.example.com.conf"],
+    "total_size": 521
+  },
+  "nginx_validated": true,
+  "health_verified": true,
+  "diff": {
+    "files_changed": 0,
+    "total_additions": 0,
+    "total_deletions": 0,
+    "files": []
+  },
+  "can_rollback": true,
+  "rollback_reason": null
+}
+```
+
+#### GET /transactions/{transaction_id}/can-rollback
+Check if a transaction can be rolled back.
+
+**Response**:
+```json
+{
+  "transaction_id": "7996fe43-3d1d-40d4-a821-70e5db9da725",
+  "can_rollback": true,
+  "reason": null,
+  "transaction_status": "completed"
+}
+```
+
+#### POST /transactions/{transaction_id}/rollback
+Rollback a transaction to restore previous configuration state.
+
+**Request Body** (optional):
+```json
+{
+  "reason": "Configuration caused errors"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "rollback_transaction_id": "new-uuid",
+  "original_transaction_id": "7996fe43-3d1d-40d4-a821-70e5db9da725",
+  "restored_state": {
+    "files_restored": ["example.com.conf"]
+  },
+  "message": "Configuration restored to state before transaction"
+}
+```
+
+---
+
+### Events & Audit Log
+
+#### GET /events/
+List system events with filtering.
+
+**Query Parameters**:
+- `since` (optional): Return events after this timestamp
+- `until` (optional): Return events before this timestamp
+- `severity` (optional): Filter by severity (info, warning, error, critical)
+- `category` (optional): Filter by category (transaction, health, ssl, system, config)
+- `transaction_id` (optional): Filter by transaction ID
+- `page` (default: 1): Page number
+- `page_size` (default: 50): Events per page
+
+**Response**:
+```json
+{
+  "events": [
+    {
+      "id": "evt-4fa438d1e432",
+      "timestamp": "2026-01-27T01:04:24.575367",
+      "severity": "info",
+      "category": "transaction",
+      "action": "completed",
+      "transaction_id": "7996fe43-3d1d-40d4-a821-70e5db9da725",
+      "resource_type": "nginx",
+      "message": "Transaction completed: nginx_reload",
+      "details": {
+        "duration_ms": 89,
+        "nginx_validated": true,
+        "health_verified": true
+      }
+    }
+  ],
+  "total": 2,
+  "page": 1,
+  "page_size": 50,
+  "has_more": false
+}
+```
+
+#### GET /events/counts
+Get event counts grouped by severity.
+
+**Response**:
+```json
+{
+  "info": 2,
+  "warning": 0,
+  "error": 0,
+  "critical": 0,
+  "total": 2
+}
+```
+
+#### GET /events/{event_id}
+Get detailed information about a specific event.
+
+**Response**:
+```json
+{
+  "id": "evt-4fa438d1e432",
+  "timestamp": "2026-01-27T01:04:24.575367",
+  "severity": "info",
+  "category": "transaction",
+  "action": "completed",
+  "transaction_id": "7996fe43-3d1d-40d4-a821-70e5db9da725",
+  "resource_type": "nginx",
+  "resource_id": "nginx",
+  "message": "Transaction completed: nginx_reload",
+  "details": {
+    "duration_ms": 89,
+    "nginx_validated": true,
+    "health_verified": true
+  },
+  "source": "api"
+}
 
 ---
 

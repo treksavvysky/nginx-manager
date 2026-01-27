@@ -67,12 +67,14 @@ This phase establishes the foundation for reliable AI agent interaction. The par
 **Rationale**: Reliable parsing is a prerequisite for AI trust. An agent that sees incorrect configuration data will make incorrect decisions. This is not optional cleanup—it's foundational.
 
 ### 2.2 Transaction & Event Model
-- [ ] Every change creates a transaction with before/after state
-- [ ] Automatic snapshots before any mutation
-- [ ] `POST /rollback/{transaction_id}` - Restore to checkpoint
-- [ ] `GET /events/` - Recent changes with full context
-- [ ] `GET /events/{id}` - Detailed transaction with diff
-- [ ] Configurable retention policy for transaction history
+- [x] Every change creates a transaction with before/after state
+- [x] Automatic snapshots before any mutation
+- [x] `POST /transactions/{id}/rollback` - Restore to checkpoint
+- [x] `GET /events/` - Recent changes with full context
+- [x] `GET /events/{id}` - Detailed event information
+- [x] `GET /transactions/` - List transactions with filtering
+- [x] `GET /transactions/{id}` - Transaction details with diff
+- [x] Configurable retention policy for transaction history
 
 ### 2.3 Rich Context Responses
 - [ ] All responses include current system state summary
@@ -276,8 +278,8 @@ Dashboard is lowest priority for an AI-first tool—but valuable for monitoring 
 ### Unit Tests
 - [x] Parser tests with complex NGINX configs (18 tests)
 - [x] NGINX endpoint tests with mocked Docker service (15 tests)
-- [ ] Model validation tests
-- [ ] Transaction/rollback logic tests
+- [x] Transaction model and snapshot service tests (18 tests)
+- [x] Total: 51 unit tests
 
 ### Integration Tests
 - [x] API endpoint tests with actual NGINX container

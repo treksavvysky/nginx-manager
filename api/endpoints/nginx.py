@@ -3,6 +3,9 @@ NGINX control endpoints.
 
 REST API endpoints for managing NGINX container lifecycle including
 reload, restart, status checks, and configuration testing.
+
+All mutation operations (reload, restart) are wrapped in transactions
+for audit logging and rollback capability.
 """
 
 import logging
@@ -19,12 +22,14 @@ from core.docker_service import (
     DockerUnavailableError,
 )
 from core.health_checker import health_checker, HealthCheckError
+from core.transaction_context import transactional_operation
 from models.nginx import (
     NginxOperationResult,
     NginxStatusResponse,
     NginxConfigTestResult,
     NginxProcessStatus,
 )
+from models.transaction import OperationType
 
 logger = logging.getLogger(__name__)
 
@@ -93,50 +98,69 @@ async def reload_nginx() -> NginxOperationResult:
     start_time = time.time()
 
     try:
-        # Get current state
-        status = await docker_service.get_container_status()
-        previous_state = status.get("status", "unknown")
+        async with transactional_operation(
+            operation=OperationType.NGINX_RELOAD,
+            resource_type="nginx",
+            resource_id="nginx"
+        ) as ctx:
+            # Get current state
+            status = await docker_service.get_container_status()
+            previous_state = status.get("status", "unknown")
 
-        # Perform reload
-        success, stdout, stderr = await docker_service.reload_nginx()
+            # Perform reload
+            success, stdout, stderr = await docker_service.reload_nginx()
 
-        if not success:
-            logger.error(f"NGINX reload failed: {stderr}")
+            if not success:
+                logger.error(f"NGINX reload failed: {stderr}")
+                # Raise to trigger transaction failure
+                raise Exception(f"Reload failed: {stderr.strip()}")
+
+            # Verify health after reload
+            health_verified = False
+            try:
+                await health_checker.verify_health()
+                health_verified = True
+                ctx.set_health_verified(True)
+            except HealthCheckError as e:
+                logger.warning(f"Health check failed after reload: {e}")
+
+            # Get new state
+            new_status = await docker_service.get_container_status()
+
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # Set transaction context data
+            ctx.set_nginx_validated(True)
+            ctx.set_result({
+                "success": True,
+                "operation": "reload",
+                "duration_ms": duration_ms,
+                "health_verified": health_verified
+            })
+
             return NginxOperationResult(
-                success=False,
+                success=True,
                 operation="reload",
-                message=f"Reload failed: {stderr.strip()}",
-                duration_ms=int((time.time() - start_time) * 1000),
-                health_verified=False,
+                message="NGINX configuration reloaded successfully",
+                duration_ms=duration_ms,
+                health_verified=health_verified,
                 previous_state=previous_state,
-                current_state=previous_state
+                current_state=new_status.get("status", "unknown"),
+                transaction_id=ctx.id
             )
-
-        # Verify health after reload
-        health_verified = False
-        try:
-            await health_checker.verify_health()
-            health_verified = True
-        except HealthCheckError as e:
-            logger.warning(f"Health check failed after reload: {e}")
-
-        # Get new state
-        new_status = await docker_service.get_container_status()
-
-        duration_ms = int((time.time() - start_time) * 1000)
-
-        return NginxOperationResult(
-            success=True,
-            operation="reload",
-            message="NGINX configuration reloaded successfully",
-            duration_ms=duration_ms,
-            health_verified=health_verified,
-            previous_state=previous_state,
-            current_state=new_status.get("status", "unknown")
-        )
 
     except DockerServiceError as e:
         raise _handle_docker_error(e)
+    except Exception as e:
+        # Handle reload failure (non-Docker errors)
+        duration_ms = int((time.time() - start_time) * 1000)
+        return NginxOperationResult(
+            success=False,
+            operation="reload",
+            message=str(e),
+            duration_ms=duration_ms,
+            health_verified=False
+        )
 
 
 @router.post(
@@ -168,42 +192,68 @@ async def restart_nginx() -> NginxOperationResult:
     start_time = time.time()
 
     try:
-        # Get current state
-        status = await docker_service.get_container_status()
-        previous_state = status.get("status", "unknown")
+        async with transactional_operation(
+            operation=OperationType.NGINX_RESTART,
+            resource_type="nginx",
+            resource_id="nginx"
+        ) as ctx:
+            # Get current state
+            status = await docker_service.get_container_status()
+            previous_state = status.get("status", "unknown")
 
-        # Perform restart
-        await docker_service.restart_container(timeout=10)
+            # Perform restart
+            await docker_service.restart_container(timeout=10)
 
-        # Wait for container to stabilize
-        import asyncio
-        await asyncio.sleep(2)
+            # Wait for container to stabilize
+            import asyncio
+            await asyncio.sleep(2)
 
-        # Verify health with more retries for restart
-        health_verified = False
-        try:
-            await health_checker.verify_health(retries=10, interval=1.0)
-            health_verified = True
-        except HealthCheckError as e:
-            logger.warning(f"Health check failed after restart: {e}")
+            # Verify health with more retries for restart
+            health_verified = False
+            try:
+                await health_checker.verify_health(retries=10, interval=1.0)
+                health_verified = True
+                ctx.set_health_verified(True)
+            except HealthCheckError as e:
+                logger.warning(f"Health check failed after restart: {e}")
 
-        # Get new state
-        new_status = await docker_service.get_container_status()
+            # Get new state
+            new_status = await docker_service.get_container_status()
 
-        duration_ms = int((time.time() - start_time) * 1000)
+            duration_ms = int((time.time() - start_time) * 1000)
 
-        return NginxOperationResult(
-            success=True,
-            operation="restart",
-            message="NGINX container restarted successfully",
-            duration_ms=duration_ms,
-            health_verified=health_verified,
-            previous_state=previous_state,
-            current_state=new_status.get("status", "unknown")
-        )
+            # Set transaction context data
+            ctx.set_nginx_validated(True)
+            ctx.set_result({
+                "success": True,
+                "operation": "restart",
+                "duration_ms": duration_ms,
+                "health_verified": health_verified
+            })
+
+            return NginxOperationResult(
+                success=True,
+                operation="restart",
+                message="NGINX container restarted successfully",
+                duration_ms=duration_ms,
+                health_verified=health_verified,
+                previous_state=previous_state,
+                current_state=new_status.get("status", "unknown"),
+                transaction_id=ctx.id
+            )
 
     except DockerServiceError as e:
         raise _handle_docker_error(e)
+    except Exception as e:
+        # Handle restart failure (non-Docker errors)
+        duration_ms = int((time.time() - start_time) * 1000)
+        return NginxOperationResult(
+            success=False,
+            operation="restart",
+            message=str(e),
+            duration_ms=duration_ms,
+            health_verified=False
+        )
 
 
 @router.get(

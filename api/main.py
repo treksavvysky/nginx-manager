@@ -16,8 +16,8 @@ import uvicorn
 import logging
 from datetime import datetime
 
-from endpoints import sites, nginx
-from config import settings
+from endpoints import sites, nginx, events, transactions
+from config import settings, ensure_directories
 
 # Configure logging
 logging.basicConfig(
@@ -30,9 +30,19 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    logger.info("🚀 NGINX Manager API starting up...")
+    logger.info("NGINX Manager API starting up...")
+
+    # Ensure required directories exist
+    ensure_directories()
+
+    # Initialize database
+    from core.database import initialize_database
+    await initialize_database()
+    logger.info("Database initialized")
+
     yield
-    logger.info("🛑 NGINX Manager API shutting down...")
+
+    logger.info("NGINX Manager API shutting down...")
 
 
 # FastAPI application with comprehensive metadata for OpenAPI
@@ -76,6 +86,8 @@ app = FastAPI(
 # Include API routers
 app.include_router(sites.router)
 app.include_router(nginx.router)
+app.include_router(events.router)
+app.include_router(transactions.router)
 
 # CORS middleware for web interface compatibility
 app.add_middleware(

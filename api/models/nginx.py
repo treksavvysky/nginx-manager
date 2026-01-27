@@ -197,6 +197,10 @@ class NginxOperationResult(BaseModel):
     )
     previous_state: Optional[str] = Field(None, description="Container state before operation")
     current_state: Optional[str] = Field(None, description="Container state after operation")
+    transaction_id: Optional[str] = Field(
+        None,
+        description="Transaction ID for this operation (for rollback/audit)"
+    )
 
 
 class NginxStatusResponse(BaseModel):
