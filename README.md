@@ -11,10 +11,21 @@ This project aims to create an intelligent NGINX management system that serves a
 ## 🏗️ Architecture Philosophy
 
 - **API-First Design**: FastAPI backend with clean REST endpoints
+- **AI-Native Responses**: Rich context in every response (locations, upstreams, SSL details)
 - **Modular Components**: Each feature as an independent, testable module
 - **Gradual Development**: Continuous iteration rather than all-at-once approach
 - **Docker Native**: Built for containerized NGINX deployments
 - **Safety First**: Config validation, backups, and rollback capabilities
+
+## 🔍 Parser Capabilities
+
+The API uses [crossplane](https://github.com/nginxinc/crossplane) for reliable NGINX config parsing:
+
+- **Full directive support**: server blocks, location blocks, upstreams
+- **Nested block parsing**: location modifiers (=, ~, ~*, ^~), nested directives
+- **SSL configuration**: certificate paths, protocols, ciphers
+- **Rich metadata**: line numbers for error reporting, header extraction
+- **Backward compatible**: legacy flat fields + optional rich fields in responses
 
 ## 🎯 Initial Feature Focus
 
@@ -39,16 +50,16 @@ This project aims to create an intelligent NGINX management system that serves a
 nginx-manager/
 ├── api/                    # FastAPI application
 │   ├── core/              # Core business logic
-│   │   ├── config_manager/     # NGINX config operations
-│   │   ├── ssl_manager/        # SSL certificate lifecycle
-│   │   └── proxy_manager/      # Reverse proxy management
+│   │   └── config_manager/     # NGINX config parsing (crossplane-based)
 │   ├── endpoints/         # REST API routes
-│   ├── models/           # Pydantic data models
-│   └── utils/            # Shared utilities
+│   └── models/           # Pydantic data models (nginx.py, config.py)
 ├── docker/               # Docker configurations
+│   ├── api/             # API container Dockerfile
 │   ├── nginx/           # NGINX container setup
-│   └── compose/         # Docker Compose files
+│   └── compose/         # Docker Compose files (dev.yml, prod.yml)
 ├── tests/               # Test suites
+│   ├── unit/            # Unit tests (parser, adapter)
+│   └── fixtures/        # Test NGINX config files
 ├── docs/                # API documentation
 └── scripts/             # Deployment and utility scripts
 ```
@@ -78,21 +89,40 @@ nginx-manager/
 ## 🎪 Getting Started
 
 ### Prerequisites
-- Docker and Docker Compose
-- Python 3.8+
-- VPS with root access
+- Docker 28.x+ and Docker Compose 2.38+
+- Python 3.12+ (for local development without Docker)
+- VPS with root access (for production deployment)
 
 ### Development Setup
 ```bash
-# Clone and setup
+# Clone the repository
 git clone <repository>
 cd nginx-manager
+
+# Start development environment (recommended)
+./scripts/dev-deploy.sh
+
+# Verify services are running
+curl http://localhost:8000/health
+curl http://localhost/health
+
+# View logs
+docker compose -f docker/compose/dev.yml logs -f
+
+# Stop services
+docker compose -f docker/compose/dev.yml down
+```
+
+### Local Python Development (without Docker)
+```bash
+# Create virtual environment
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Start development environment
-docker-compose -f docker/compose/dev.yml up -d
+# Run API locally
+cd api
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 ## 🎯 API Endpoints (Planned)
 
