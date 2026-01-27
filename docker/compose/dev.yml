@@ -13,9 +13,9 @@ services:
     volumes:
       # Mount configuration directories (rw for CRUD operations)
       - ../../test-configs:/etc/nginx/conf.d
-      - nginx-ssl:/etc/ssl
-      - api-logs:/var/log/nginx-manager
-      - api-backups:/var/backups/nginx
+      - ../../data/ssl:/etc/ssl
+      - ../../data/api-logs:/var/log/nginx-manager
+      - ../../data/api-backups:/var/backups/nginx
       # Development: mount source code for hot reload
       - ../../api:/app/api
       # Mount tests directory for running tests
@@ -46,8 +46,10 @@ services:
     volumes:
       # Share configuration with API
       - ../../test-configs:/etc/nginx/conf.d:ro
-      - nginx-ssl:/etc/ssl
-      - nginx-logs:/var/log/nginx
+      - ../../data/ssl:/etc/ssl
+      - ../../data/nginx-logs:/var/log/nginx
+      # Website content directory
+      - ../../www:/var/www
     networks:
       - nginx-manager
     restart: unless-stopped
@@ -60,18 +62,6 @@ services:
   #     - "3000:80"
   #   networks:
   #     - nginx-manager
-
-volumes:
-  nginx-configs:
-    driver: local
-  nginx-ssl:
-    driver: local
-  nginx-logs:
-    driver: local
-  api-logs:
-    driver: local
-  api-backups:
-    driver: local
 
 networks:
   nginx-manager:

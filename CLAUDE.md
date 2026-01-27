@@ -54,7 +54,7 @@ Client (AI Agents / REST API)
 - `api/endpoints/nginx.py` - NGINX control endpoints (reload, restart, status, test)
 - `api/endpoints/transactions.py` - Transaction history and rollback endpoints
 - `api/endpoints/events.py` - Event audit log endpoints
-- `api/core/config_manager/crossplane_parser.py` - Crossplane-based NGINX parser (full directive support)
+- `api/core/config_manager/crossplane_parser.py` - Crossplane-based NGINX parser (full directive support: server, location, upstream, map, geo, include resolution)
 - `api/core/config_manager/adapter.py` - Converts parsed config to API response format
 - `api/core/config_generator/generator.py` - Jinja2-based NGINX config generator
 - `api/core/config_generator/templates/` - NGINX config templates (static_site, reverse_proxy)
@@ -65,7 +65,7 @@ Client (AI Agents / REST API)
 - `api/core/snapshot_service.py` - Configuration state capture and restoration
 - `api/core/context_helpers.py` - Generates suggestions and warnings for AI-friendly responses
 - `api/core/database.py` - SQLite async database management
-- `api/models/nginx.py` - Rich data models: ServerBlock, LocationBlock, UpstreamBlock, SSLConfig, NginxOperationResult
+- `api/models/nginx.py` - Rich data models: ServerBlock, LocationBlock, UpstreamBlock, MapBlock, GeoBlock, SSLConfig, NginxOperationResult, ParsedNginxConfig
 - `api/models/transaction.py` - Transaction, TransactionDetail, RollbackResult models
 - `api/models/event.py` - Event, EventFilters models
 - `api/models/config.py` - Pydantic models: SiteConfig, SiteConfigResponse, ConfigValidationResult
@@ -77,6 +77,17 @@ Client (AI Agents / REST API)
 - `docker/compose/prod.yml` - Production hardened, localhost-only API, non-root user
 - `docker/api/Dockerfile` - Python 3.12-slim base
 - `docker/nginx/Dockerfile` - nginx:alpine base
+
+**Directory structure (persistent storage):**
+```
+├── test-configs/          → /etc/nginx/conf.d    (NGINX site configs)
+├── www/                   → /var/www             (Website content)
+└── data/
+    ├── ssl/               → /etc/ssl             (SSL certificates)
+    ├── nginx-logs/        → /var/log/nginx       (NGINX access/error logs)
+    ├── api-logs/          → /var/log/nginx-manager (API logs)
+    └── api-backups/       → /var/backups/nginx   (Config backups)
+```
 
 ## Configuration
 
@@ -91,6 +102,32 @@ Environment variables managed via Pydantic BaseSettings in `api/config.py`:
 - `SNAPSHOT_DIR` - Directory for configuration snapshots
 - `SNAPSHOT_RETENTION_DAYS`, `EVENT_RETENTION_DAYS` - Retention policies
 - `AUTO_ROLLBACK_ON_FAILURE` - Automatic rollback on operation failure
+
+## API Usage Examples
+
+### Create a static site
+```bash
+curl -X POST http://localhost:8000/sites/ \
+  -H "Content-Type: application/json" \
+  -d '{"name": "example.com", "server_names": ["example.com"], "site_type": "static", "root_path": "/var/www/example", "auto_reload": true}'
+```
+
+### Create a reverse proxy site
+```bash
+curl -X POST http://localhost:8000/sites/ \
+  -H "Content-Type: application/json" \
+  -d '{"name": "api.example.com", "server_names": ["api.example.com"], "site_type": "reverse_proxy", "proxy_pass": "http://localhost:3000", "auto_reload": true}'
+```
+
+### List all sites
+```bash
+curl http://localhost:8000/sites/
+```
+
+### Test a site (requires Host header for virtual hosts)
+```bash
+curl -H "Host: example.com" http://localhost/
+```
 
 ## Key Features
 
