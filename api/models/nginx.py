@@ -201,6 +201,18 @@ class NginxOperationResult(BaseModel):
         None,
         description="Transaction ID for this operation (for rollback/audit)"
     )
+    auto_rolled_back: bool = Field(
+        default=False,
+        description="Whether configuration was automatically rolled back due to health check failure"
+    )
+    rollback_reason: Optional[str] = Field(
+        None,
+        description="Reason for automatic rollback (if auto_rolled_back is True)"
+    )
+    rollback_transaction_id: Optional[str] = Field(
+        None,
+        description="Transaction ID of the rollback operation (if auto_rolled_back is True)"
+    )
 
 
 class NginxStatusResponse(BaseModel):

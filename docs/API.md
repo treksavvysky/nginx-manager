@@ -332,7 +332,9 @@ Validate all NGINX configuration files with `nginx -t`.
 #### POST /nginx/reload
 Graceful NGINX reload with health verification. Creates a transaction for audit and rollback.
 
-**Response**:
+**Auto-Rollback:** If health check fails after reload, configuration is automatically rolled back to the previous state (when `AUTO_ROLLBACK_ON_FAILURE=true`, which is the default).
+
+**Response (success)**:
 ```json
 {
   "success": true,
@@ -343,7 +345,27 @@ Graceful NGINX reload with health verification. Creates a transaction for audit 
   "health_verified": true,
   "previous_state": "running",
   "current_state": "running",
-  "transaction_id": "7996fe43-3d1d-40d4-a821-70e5db9da725"
+  "transaction_id": "7996fe43-3d1d-40d4-a821-70e5db9da725",
+  "auto_rolled_back": false,
+  "rollback_reason": null,
+  "rollback_transaction_id": null
+}
+```
+
+**Response (health check failed, auto-rolled back)**:
+```json
+{
+  "success": false,
+  "operation": "reload",
+  "message": "NGINX reload succeeded but health check failed. Configuration automatically rolled back.",
+  "duration_ms": 150,
+  "health_verified": false,
+  "previous_state": "running",
+  "current_state": "running",
+  "transaction_id": "abc-123",
+  "auto_rolled_back": true,
+  "rollback_reason": "Health check failed: Connection refused after 5 attempts",
+  "rollback_transaction_id": "def-456"
 }
 ```
 

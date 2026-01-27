@@ -23,6 +23,7 @@ from core.docker_service import (
 )
 from core.health_checker import health_checker, HealthCheckError
 from core.transaction_context import transactional_operation
+from core.transaction_manager import get_transaction_manager
 from models.nginx import (
     NginxOperationResult,
     NginxStatusResponse,
@@ -82,9 +83,11 @@ dropping existing connections. Perfect for applying configuration changes.
 3. If valid, starts new workers with new config
 4. Old workers gracefully finish existing requests
 5. Health check verifies NGINX is responding
+6. **If health check fails, configuration is automatically rolled back**
 
 **Safe Operation:** Existing connections are preserved during reload.
 If configuration is invalid, NGINX continues with old config.
+If health check fails after reload, previous configuration is restored.
 
 **AI Agent Usage:** Call this after modifying site configurations to apply changes.
 """,
@@ -101,7 +104,8 @@ async def reload_nginx() -> NginxOperationResult:
         async with transactional_operation(
             operation=OperationType.NGINX_RELOAD,
             resource_type="nginx",
-            resource_id="nginx"
+            resource_id="nginx",
+            auto_rollback_on_failure=False  # We handle rollback manually for health failures
         ) as ctx:
             # Get current state
             status = await docker_service.get_container_status()
@@ -117,37 +121,100 @@ async def reload_nginx() -> NginxOperationResult:
 
             # Verify health after reload
             health_verified = False
+            health_error = None
             try:
                 await health_checker.verify_health()
                 health_verified = True
                 ctx.set_health_verified(True)
             except HealthCheckError as e:
                 logger.warning(f"Health check failed after reload: {e}")
+                health_error = str(e)
+
+            # Auto-rollback if health check failed and auto-rollback is enabled
+            auto_rolled_back = False
+            rollback_reason = None
+            rollback_transaction_id = None
+
+            if not health_verified and settings.auto_rollback_on_failure:
+                logger.info(f"Auto-rolling back transaction {ctx.id} due to health check failure")
+                rollback_reason = f"Health check failed: {health_error}"
+
+                try:
+                    # Get transaction manager and perform rollback
+                    transaction_manager = get_transaction_manager()
+
+                    # Complete current transaction first (mark as needing rollback)
+                    ctx.set_result({
+                        "success": False,
+                        "operation": "reload",
+                        "health_verified": False,
+                        "auto_rollback_triggered": True
+                    })
+
+                    # We need to complete the transaction context before rollback
+                    # The rollback will be done after the context exits
+
+                except Exception as rollback_error:
+                    logger.error(f"Failed to prepare auto-rollback: {rollback_error}")
 
             # Get new state
             new_status = await docker_service.get_container_status()
-
             duration_ms = int((time.time() - start_time) * 1000)
 
             # Set transaction context data
             ctx.set_nginx_validated(True)
             ctx.set_result({
-                "success": True,
+                "success": health_verified,
                 "operation": "reload",
                 "duration_ms": duration_ms,
                 "health_verified": health_verified
             })
 
-            return NginxOperationResult(
-                success=True,
-                operation="reload",
-                message="NGINX configuration reloaded successfully",
-                duration_ms=duration_ms,
-                health_verified=health_verified,
-                previous_state=previous_state,
-                current_state=new_status.get("status", "unknown"),
-                transaction_id=ctx.id
-            )
+            # Store transaction ID for potential rollback after context exits
+            transaction_id = ctx.id
+
+        # After transaction context exits, perform rollback if needed
+        if not health_verified and settings.auto_rollback_on_failure:
+            try:
+                transaction_manager = get_transaction_manager()
+                rollback_result = await transaction_manager.rollback_transaction(
+                    transaction_id,
+                    reason=rollback_reason
+                )
+
+                if rollback_result.success:
+                    auto_rolled_back = True
+                    rollback_transaction_id = rollback_result.rollback_transaction_id
+                    logger.info(f"Auto-rollback successful: {rollback_transaction_id}")
+                else:
+                    logger.error(f"Auto-rollback failed: {rollback_result.message}")
+                    rollback_reason = f"Rollback failed: {rollback_result.message}"
+
+            except Exception as rollback_error:
+                logger.error(f"Auto-rollback error: {rollback_error}")
+                rollback_reason = f"Rollback error: {rollback_error}"
+
+        # Build response message
+        if auto_rolled_back:
+            message = "NGINX reload succeeded but health check failed. Configuration automatically rolled back."
+        elif not health_verified:
+            message = "NGINX reload succeeded but health check failed. Auto-rollback disabled or failed."
+        else:
+            message = "NGINX configuration reloaded successfully"
+
+        return NginxOperationResult(
+            success=health_verified,
+            operation="reload",
+            message=message,
+            duration_ms=duration_ms,
+            health_verified=health_verified,
+            previous_state=previous_state,
+            current_state=new_status.get("status", "unknown"),
+            transaction_id=transaction_id,
+            auto_rolled_back=auto_rolled_back,
+            rollback_reason=rollback_reason if auto_rolled_back else None,
+            rollback_transaction_id=rollback_transaction_id
+        )
 
     except DockerServiceError as e:
         raise _handle_docker_error(e)

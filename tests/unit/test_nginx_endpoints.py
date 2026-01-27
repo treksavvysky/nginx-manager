@@ -220,17 +220,29 @@ class TestNginxReload:
             assert "failed" in data["message"].lower()
 
     @pytest.mark.asyncio
-    async def test_reload_health_check_fails(self):
-        """Test reload success but health check fails."""
+    async def test_reload_health_check_fails_with_auto_rollback(self):
+        """Test reload success but health check fails triggers auto-rollback."""
         mock_status = {
             "status": "running",
             "running": True,
         }
 
+        # Mock rollback result
+        mock_rollback_result = MagicMock()
+        mock_rollback_result.success = True
+        mock_rollback_result.rollback_transaction_id = "rollback-txn-456"
+        mock_rollback_result.message = "Rollback successful"
+
+        mock_txn_manager = MagicMock()
+        mock_txn_manager.rollback_transaction = AsyncMock(return_value=mock_rollback_result)
+
         with patch("endpoints.nginx.docker_service") as mock_docker, \
              patch("endpoints.nginx.health_checker") as mock_health, \
-             patch("endpoints.nginx.transactional_operation", mock_transactional_operation):
+             patch("endpoints.nginx.transactional_operation", mock_transactional_operation), \
+             patch("endpoints.nginx.get_transaction_manager", return_value=mock_txn_manager), \
+             patch("endpoints.nginx.settings") as mock_settings:
 
+            mock_settings.auto_rollback_on_failure = True
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
             mock_docker.reload_nginx = AsyncMock(return_value=(True, "", ""))
             mock_health.verify_health = AsyncMock(
@@ -245,8 +257,44 @@ class TestNginxReload:
 
             assert response.status_code == 200
             data = response.json()
-            assert data["success"] is True
+            assert data["success"] is False
             assert data["health_verified"] is False
+            assert data["auto_rolled_back"] is True
+            assert data["rollback_transaction_id"] == "rollback-txn-456"
+            assert "rolled back" in data["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_reload_health_check_fails_auto_rollback_disabled(self):
+        """Test reload with health check failure when auto-rollback is disabled."""
+        mock_status = {
+            "status": "running",
+            "running": True,
+        }
+
+        with patch("endpoints.nginx.docker_service") as mock_docker, \
+             patch("endpoints.nginx.health_checker") as mock_health, \
+             patch("endpoints.nginx.transactional_operation", mock_transactional_operation), \
+             patch("endpoints.nginx.settings") as mock_settings:
+
+            mock_settings.auto_rollback_on_failure = False
+            mock_docker.get_container_status = AsyncMock(return_value=mock_status)
+            mock_docker.reload_nginx = AsyncMock(return_value=(True, "", ""))
+            mock_health.verify_health = AsyncMock(
+                side_effect=HealthCheckError("Health check failed", attempts=5)
+            )
+
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test"
+            ) as client:
+                response = await client.post("/nginx/reload")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is False
+            assert data["health_verified"] is False
+            assert data["auto_rolled_back"] is False
+            assert data.get("rollback_transaction_id") is None
 
 
 class TestNginxRestart:

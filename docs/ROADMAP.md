@@ -108,7 +108,7 @@ This phase establishes the foundation for reliable AI agent interaction. The par
 - [x] `POST /nginx/test` - Validate all configurations with `nginx -t`
 - [x] Docker SDK integration for container management
 - [x] Health checker with configurable retries
-- [ ] Automatic rollback if reload fails health check
+- [x] Automatic rollback if reload fails health check
 
 ### 2.7 MCP Interface Design (Design Only)
 - [ ] Define MCP resources schema (site configs, system health)
@@ -279,10 +279,10 @@ Dashboard is lowest priority for an AI-first tool—but valuable for monitoring 
 
 ### Unit Tests
 - [x] Parser tests with complex NGINX configs (18 tests)
-- [x] NGINX endpoint tests with mocked Docker service (15 tests)
+- [x] NGINX endpoint tests with mocked Docker service (16 tests)
 - [x] Transaction model and snapshot service tests (18 tests)
 - [x] Config generator tests (14 tests)
-- [x] Total: 65 unit tests
+- [x] Total: 66 unit tests
 
 ### Integration Tests
 - [x] API endpoint tests with actual NGINX container
