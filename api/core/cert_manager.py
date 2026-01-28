@@ -7,6 +7,7 @@ and revoking SSL certificates using the ACME service.
 
 import asyncio
 import logging
+import re
 import socket
 import json
 from pathlib import Path
@@ -73,8 +74,40 @@ class CertManager:
 
     def __init__(self):
         self.acme: ACMEService = get_acme_service()
+        self.acme.set_account_loader(self._load_acme_account)
         self.db = get_database()
         self.cert_base_dir = Path(settings.ssl_cert_dir)
+
+    async def _load_acme_account(self):
+        """Load the most recent ACME account from the database."""
+        directory_url = self.acme.directory_url
+        row = await self.db.fetch_one(
+            "SELECT * FROM acme_accounts WHERE directory_url = ? ORDER BY created_at DESC LIMIT 1",
+            (directory_url,)
+        )
+        if row:
+            from models.certificate import ACMEAccount
+            return ACMEAccount(
+                id=row["id"],
+                email=row["email"],
+                directory_url=row["directory_url"],
+                account_url=row["account_url"],
+                private_key_pem=row["private_key_pem"]
+            )
+        return None
+
+    async def _save_acme_account(self, account):
+        """Save an ACME account to the database for reuse across restarts."""
+        import uuid
+        account_id = account.id or f"acme-{uuid.uuid4().hex[:12]}"
+        await self.db.execute(
+            """INSERT OR REPLACE INTO acme_accounts
+               (id, email, directory_url, account_url, private_key_pem)
+               VALUES (?, ?, ?, ?, ?)""",
+            (account_id, account.email, account.directory_url,
+             account.account_url, account.private_key_pem)
+        )
+        logger.info(f"Saved ACME account {account_id} for {account.directory_url}")
 
     def _get_cert_dir(self, domain: str) -> Path:
         """Get the certificate directory for a domain."""
@@ -85,6 +118,197 @@ class CertManager:
         cert_dir = self._get_cert_dir(domain)
         cert_dir.mkdir(parents=True, exist_ok=True)
         return cert_dir
+
+    async def _find_site_config(self, domain: str) -> Optional[Path]:
+        """Find the NGINX config file that serves a given domain."""
+        conf_dir = Path(settings.nginx_conf_dir)
+        if not conf_dir.exists():
+            return None
+
+        # Check common naming patterns first
+        for candidate in [
+            conf_dir / f"{domain}.conf",
+            conf_dir / f"{domain.replace('.', '_')}.conf",
+        ]:
+            if candidate.exists():
+                return candidate
+
+        # Search all .conf files for server_name matching this domain
+        for conf_file in conf_dir.glob("*.conf"):
+            try:
+                content = conf_file.read_text()
+                if "server_name" in content and domain in content:
+                    return conf_file
+            except Exception:
+                continue
+
+        return None
+
+    async def _ensure_acme_challenge_routing(self, domain: str) -> bool:
+        """
+        Ensure the site config has an ACME challenge location block.
+
+        Injects the block before the first 'location /' if missing.
+        Validates with nginx -t and reloads NGINX after injection.
+
+        Returns True if block was injected, False if already present or failed.
+        """
+        config_path = await self._find_site_config(domain)
+        if not config_path:
+            logger.warning(f"No site config found for {domain}, skipping ACME routing injection")
+            return False
+
+        content = config_path.read_text()
+
+        # Already has ACME challenge block
+        if "/.well-known/acme-challenge/" in content:
+            logger.info(f"ACME challenge routing already present in {config_path.name}")
+            return False
+
+        # Build the ACME challenge location block
+        acme_block = (
+            "\n"
+            "    # ACME challenge for Let's Encrypt\n"
+            "    location ^~ /.well-known/acme-challenge/ {\n"
+            f"        alias {settings.acme_challenge_dir}/;\n"
+            '        default_type "text/plain";\n'
+            "        try_files $uri =404;\n"
+            "    }\n"
+        )
+
+        # Find the first 'location / {' (not 'location ^~' or other prefixed locations)
+        match = re.search(r"^(\s*location\s+/\s*\{)", content, re.MULTILINE)
+        if match:
+            insert_pos = match.start()
+            new_content = content[:insert_pos] + acme_block + "\n" + content[insert_pos:]
+        else:
+            logger.warning(f"Could not find 'location /' block in {config_path.name}")
+            return False
+
+        # Write updated config
+        original_content = content
+        config_path.write_text(new_content)
+
+        # Validate with nginx -t
+        try:
+            success, stdout, stderr = await docker_service.test_config()
+            if not success:
+                config_path.write_text(original_content)
+                logger.error(f"ACME challenge injection failed validation: {stderr}")
+                return False
+        except Exception as e:
+            config_path.write_text(original_content)
+            logger.error(f"Failed to validate config after ACME injection: {e}")
+            return False
+
+        # Reload NGINX so the challenge route is live
+        try:
+            await docker_service.reload_nginx()
+        except Exception as e:
+            logger.warning(f"Failed to reload NGINX after ACME injection: {e}")
+
+        logger.info(f"Injected ACME challenge routing into {config_path.name}")
+        return True
+
+    async def _upgrade_site_to_ssl(
+        self,
+        domain: str,
+        ssl_cert_path: str,
+        ssl_key_path: str
+    ) -> bool:
+        """
+        Upgrade a site config to SSL after certificate issuance.
+
+        Replaces the HTTP-only config with a full SSL template containing
+        an HTTP-to-HTTPS redirect and an HTTPS server block.
+
+        Returns True if upgraded, False if already SSL or failed.
+        """
+        config_path = await self._find_site_config(domain)
+        if not config_path:
+            logger.warning(f"No site config found for {domain}, skipping SSL upgrade")
+            return False
+
+        content = config_path.read_text()
+
+        # Already has SSL
+        if "ssl_certificate" in content:
+            logger.info(f"Site {domain} already has SSL configuration")
+            return False
+
+        # Determine site type
+        is_reverse_proxy = "proxy_pass" in content
+
+        # Extract server_names
+        server_name_match = re.search(r"server_name\s+(.+?);", content)
+        server_names = server_name_match.group(1).strip() if server_name_match else domain
+
+        # Extract existing config values
+        root_path = None
+        proxy_pass = None
+        index_files = "index.html index.htm"
+
+        if is_reverse_proxy:
+            proxy_match = re.search(r"proxy_pass\s+(.+?);", content)
+            proxy_pass = proxy_match.group(1).strip() if proxy_match else None
+        else:
+            root_match = re.search(r"root\s+(.+?);", content)
+            root_path = root_match.group(1).strip() if root_match else f"/var/www/{domain}"
+            index_match = re.search(r"index\s+(.+?);", content)
+            if index_match:
+                index_files = index_match.group(1).strip()
+
+        # Generate new SSL config
+        from core.config_generator.generator import get_config_generator
+        generator = get_config_generator()
+        acme_challenge_dir = settings.acme_challenge_dir
+
+        try:
+            if is_reverse_proxy and proxy_pass:
+                new_config = generator.generate_ssl_reverse_proxy(
+                    server_names=server_names,
+                    proxy_pass=proxy_pass,
+                    ssl_cert_path=ssl_cert_path,
+                    ssl_key_path=ssl_key_path,
+                    acme_challenge_dir=acme_challenge_dir
+                )
+            else:
+                new_config = generator.generate_ssl_static_site(
+                    server_names=server_names,
+                    root_path=root_path,
+                    ssl_cert_path=ssl_cert_path,
+                    ssl_key_path=ssl_key_path,
+                    acme_challenge_dir=acme_challenge_dir,
+                    index_files=index_files
+                )
+        except Exception as e:
+            logger.error(f"Failed to generate SSL config for {domain}: {e}")
+            return False
+
+        # Write new config, keeping original for rollback
+        original_content = content
+        config_path.write_text(new_config)
+
+        # Validate with nginx -t
+        try:
+            success, stdout, stderr = await docker_service.test_config()
+            if not success:
+                config_path.write_text(original_content)
+                logger.error(f"SSL config upgrade failed validation: {stderr}")
+                return False
+        except Exception as e:
+            config_path.write_text(original_content)
+            logger.error(f"Failed to validate SSL config: {e}")
+            return False
+
+        # Reload NGINX
+        try:
+            await docker_service.reload_nginx()
+        except Exception as e:
+            logger.warning(f"Failed to reload NGINX after SSL upgrade: {e}")
+
+        logger.info(f"Upgraded site {domain} to SSL configuration")
+        return True
 
     async def _save_certificate_files(
         self,
@@ -373,10 +597,16 @@ class CertManager:
         # Save to database
         await self.db.insert("certificates", await self._certificate_to_db(cert))
 
+        # Ensure ACME challenge routing is in the site config before starting
+        await self._ensure_acme_challenge_routing(domain)
+
         try:
             # Register/get ACME account
             account = await self.acme.register_account()
             cert.acme_account_id = account.id
+
+            # Persist account for reuse across restarts
+            await self._save_acme_account(account)
 
             # Create order
             order = await self.acme.create_order(all_domains)
@@ -444,10 +674,20 @@ class CertManager:
                 await self._certificate_to_db(cert)
             )
 
+            # Upgrade site config to SSL (HTTP redirect + HTTPS block)
+            await self._upgrade_site_to_ssl(
+                domain,
+                ssl_cert_path=paths["fullchain_path"],
+                ssl_key_path=paths["privkey_path"]
+            )
+
             logger.info(f"Successfully obtained certificate for {domain}")
             return cert
 
         except Exception as e:
+            # Reset ACME client to prevent stale state on next request
+            self.acme.reset()
+
             # Update certificate status to failed
             cert.status = CertificateStatus.FAILED
             cert.last_renewal_error = str(e)

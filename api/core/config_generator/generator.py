@@ -143,6 +143,56 @@ class ConfigGenerator:
         logger.debug(f"Generated reverse proxy config for {request.name}")
         return config
 
+    def generate_ssl_static_site(
+        self,
+        server_names: str,
+        root_path: str,
+        ssl_cert_path: str,
+        ssl_key_path: str,
+        acme_challenge_dir: str,
+        index_files: str = "index.html index.htm"
+    ) -> str:
+        """Generate SSL-enabled static site configuration."""
+        try:
+            template = self.env.get_template("ssl_static_site.conf.j2")
+        except TemplateNotFound:
+            raise TemplateNotFoundError("SSL static site template not found")
+
+        config = template.render(
+            server_names=server_names,
+            root_path=root_path,
+            index_files=index_files,
+            ssl_cert_path=ssl_cert_path,
+            ssl_key_path=ssl_key_path,
+            acme_challenge_dir=acme_challenge_dir
+        )
+        logger.debug(f"Generated SSL static site config for {server_names}")
+        return config
+
+    def generate_ssl_reverse_proxy(
+        self,
+        server_names: str,
+        proxy_pass: str,
+        ssl_cert_path: str,
+        ssl_key_path: str,
+        acme_challenge_dir: str
+    ) -> str:
+        """Generate SSL-enabled reverse proxy configuration."""
+        try:
+            template = self.env.get_template("ssl_reverse_proxy.conf.j2")
+        except TemplateNotFound:
+            raise TemplateNotFoundError("SSL reverse proxy template not found")
+
+        config = template.render(
+            server_names=server_names,
+            proxy_pass=proxy_pass,
+            ssl_cert_path=ssl_cert_path,
+            ssl_key_path=ssl_key_path,
+            acme_challenge_dir=acme_challenge_dir
+        )
+        logger.debug(f"Generated SSL reverse proxy config for {server_names}")
+        return config
+
     def validate_template(self, template_name: str) -> bool:
         """
         Check if a template exists and is valid.

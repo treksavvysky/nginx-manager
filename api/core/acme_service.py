@@ -62,6 +62,17 @@ class ACMEService:
         self._client: Optional[ClientV2] = None
         self._account_key: Optional[jose.JWK] = None
         self._challenge_dir = Path(settings.acme_challenge_dir)
+        self._account_loader = None
+
+    def set_account_loader(self, loader):
+        """Set async callback to load a saved ACME account from persistent storage."""
+        self._account_loader = loader
+
+    def reset(self):
+        """Reset client state. Call after failures to prevent stale client reuse."""
+        logger.info("Resetting ACME client state")
+        self._client = None
+        self._account_key = None
 
     @property
     def directory_url(self) -> str:
@@ -71,11 +82,23 @@ class ACMEService:
         return settings.acme_directory_url
 
     async def _get_or_create_account_key(self) -> jose.JWK:
-        """Get existing account key or generate a new one."""
+        """Get existing account key, load from storage, or generate a new one."""
         if self._account_key:
             return self._account_key
 
+        # Try loading saved account from persistent storage
+        if self._account_loader:
+            try:
+                saved_account = await self._account_loader()
+                if saved_account:
+                    logger.info("Loading ACME account from database")
+                    await self.load_account(saved_account)
+                    return self._account_key
+            except Exception as e:
+                logger.warning(f"Failed to load saved ACME account: {e}")
+
         # Generate new RSA key for account
+        logger.info("Generating new ACME account key")
         private_key = rsa.generate_private_key(
             public_exponent=65537,
             key_size=2048
