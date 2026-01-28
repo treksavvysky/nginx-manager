@@ -28,22 +28,33 @@ class ConfigAdapter:
         Returns:
             Dictionary compatible with SiteConfigResponse(**dict)
         """
-        primary_server = parsed.server_blocks[0] if parsed.server_blocks else None
+        # Find the best primary server: prefer SSL-enabled block, otherwise first
+        primary_server = None
+        ssl_server = None
+        for server in parsed.server_blocks:
+            if primary_server is None:
+                primary_server = server
+            if server.ssl.enabled and ssl_server is None:
+                ssl_server = server
 
         # Extract first server_name
         server_name = None
         if primary_server and primary_server.server_names:
             server_name = " ".join(primary_server.server_names)
 
-        # Extract all unique ports
-        listen_ports = ConfigAdapter._extract_ports(primary_server)
+        # Extract all unique ports from ALL server blocks
+        listen_ports = []
+        ports_set = set()
+        for server in parsed.server_blocks:
+            for port in ConfigAdapter._extract_ports(server):
+                if port not in ports_set:
+                    ports_set.add(port)
+                    listen_ports.append(port)
+        listen_ports.sort()
 
-        # Determine SSL status
-        ssl_enabled = False
-        has_ssl_cert = False
-        if primary_server:
-            ssl_enabled = primary_server.ssl.enabled
-            has_ssl_cert = bool(primary_server.ssl.certificate)
+        # Determine SSL status - check ALL server blocks
+        ssl_enabled = ssl_server is not None
+        has_ssl_cert = bool(ssl_server.ssl.certificate) if ssl_server else False
 
         # Find root path (server level or first location)
         root_path = ConfigAdapter._find_root(primary_server)
@@ -134,26 +145,33 @@ class ConfigAdapter:
         # Start with legacy format
         result = ConfigAdapter.to_legacy_dict(parsed)
 
-        # Add rich fields
+        # Find servers: prefer SSL-enabled for SSL config, use first for general config
         primary_server = parsed.server_blocks[0] if parsed.server_blocks else None
+        ssl_server = None
+        for server in parsed.server_blocks:
+            if server.ssl.enabled:
+                ssl_server = server
+                break
 
         if primary_server:
             # All server names as list
             result["server_names"] = primary_server.server_names
 
-            # Location blocks
+            # Location blocks - use SSL server if available for richer content
+            content_server = ssl_server if ssl_server else primary_server
             result["locations"] = [
                 ConfigAdapter._location_to_dict(loc)
-                for loc in primary_server.locations
+                for loc in content_server.locations
             ]
 
-            # SSL config
+            # SSL config - use SSL server if available
+            ssl_source = ssl_server if ssl_server else primary_server
             result["ssl_config"] = {
-                "enabled": primary_server.ssl.enabled,
-                "certificate": primary_server.ssl.certificate,
-                "certificate_key": primary_server.ssl.certificate_key,
-                "protocols": primary_server.ssl.protocols,
-                "ciphers": primary_server.ssl.ciphers,
+                "enabled": ssl_source.ssl.enabled,
+                "certificate": ssl_source.ssl.certificate,
+                "certificate_key": ssl_source.ssl.certificate_key,
+                "protocols": ssl_source.ssl.protocols,
+                "ciphers": ssl_source.ssl.ciphers,
             }
 
         # Upstreams (file-level, not server-level)

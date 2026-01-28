@@ -609,6 +609,22 @@ def run_mcp_server(
 # CLI entry point
 if __name__ == "__main__":
     import argparse
+    import os
+    from pathlib import Path
+
+    # Auto-detect host paths when running outside Docker container
+    # Check if we're running on host by looking for project directory
+    project_root = Path(__file__).parent.parent.parent  # api/mcp_server/server.py -> project root
+    host_data_dir = project_root / "data"
+    host_configs_dir = project_root / "test-configs"
+
+    if host_data_dir.exists() and "TRANSACTION_DB_PATH" not in os.environ:
+        # Running on host - set environment variables for host paths
+        os.environ.setdefault("NGINX_CONF_DIR", str(host_configs_dir))
+        os.environ.setdefault("TRANSACTION_DB_PATH", str(host_data_dir / "api-backups" / "transactions.db"))
+        os.environ.setdefault("SNAPSHOT_DIR", str(host_data_dir / "api-backups" / "snapshots"))
+        os.environ.setdefault("SSL_CERT_DIR", str(host_data_dir / "ssl"))
+        os.environ.setdefault("ACME_CHALLENGE_DIR", str(host_data_dir / "acme-challenge"))
 
     parser = argparse.ArgumentParser(description="NGINX Manager MCP Server")
     parser.add_argument(
