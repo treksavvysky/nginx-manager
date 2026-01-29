@@ -4,22 +4,22 @@ Unit tests for the transaction manager.
 Tests transaction lifecycle, snapshot management, and rollback functionality.
 """
 
-import pytest
-import tempfile
 import shutil
+import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
-import sys
+from unittest.mock import patch
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "api"))
 
 from models.transaction import (
+    OperationType,
     Transaction,
     TransactionStatus,
-    OperationType,
     TransactionSummary,
-    TransactionDetail,
 )
 
 
@@ -97,10 +97,8 @@ class TestSnapshotService:
             mock_settings.snapshot_retention_days = 30
 
             from core.snapshot_service import SnapshotService
-            service = SnapshotService(
-                snapshot_dir=snapshot_dir,
-                nginx_conf_dir=nginx_conf
-            )
+
+            service = SnapshotService(snapshot_dir=snapshot_dir, nginx_conf_dir=nginx_conf)
 
             # Create snapshot (await the async method)
             txn_id = "test-txn-123"
@@ -127,10 +125,8 @@ class TestSnapshotService:
             mock_settings.snapshot_retention_days = 30
 
             from core.snapshot_service import SnapshotService
-            service = SnapshotService(
-                snapshot_dir=snapshot_dir,
-                nginx_conf_dir=nginx_conf
-            )
+
+            service = SnapshotService(snapshot_dir=snapshot_dir, nginx_conf_dir=nginx_conf)
 
             # Create snapshot
             txn_id = "test-txn-123"
@@ -163,10 +159,8 @@ class TestSnapshotService:
             mock_settings.snapshot_retention_days = 30
 
             from core.snapshot_service import SnapshotService
-            service = SnapshotService(
-                snapshot_dir=snapshot_dir,
-                nginx_conf_dir=nginx_conf
-            )
+
+            service = SnapshotService(snapshot_dir=snapshot_dir, nginx_conf_dir=nginx_conf)
 
             txn_id = "test-txn-123"
 
@@ -200,10 +194,8 @@ class TestSnapshotService:
             mock_settings.snapshot_retention_days = 30
 
             from core.snapshot_service import SnapshotService
-            service = SnapshotService(
-                snapshot_dir=snapshot_dir,
-                nginx_conf_dir=nginx_conf
-            )
+
+            service = SnapshotService(snapshot_dir=snapshot_dir, nginx_conf_dir=nginx_conf)
 
             txn_id = "test-txn-456"
 
@@ -230,10 +222,8 @@ class TestSnapshotService:
             mock_settings.snapshot_retention_days = 30
 
             from core.snapshot_service import SnapshotService
-            service = SnapshotService(
-                snapshot_dir=snapshot_dir,
-                nginx_conf_dir=nginx_conf
-            )
+
+            service = SnapshotService(snapshot_dir=snapshot_dir, nginx_conf_dir=nginx_conf)
 
             txn_id = "test-txn-789"
 
@@ -253,6 +243,7 @@ class TestEventModels:
     def test_event_severity_enum(self):
         """Test EventSeverity enum values."""
         from models.event import EventSeverity
+
         assert EventSeverity.INFO.value == "info"
         assert EventSeverity.WARNING.value == "warning"
         assert EventSeverity.ERROR.value == "error"
@@ -261,13 +252,14 @@ class TestEventModels:
     def test_event_creation(self):
         """Test creating an Event model."""
         from models.event import Event
+
         event = Event(
             id="evt-123",
             timestamp=datetime.now(),
             severity="info",
             category="transaction",
             action="started",
-            message="Test event"
+            message="Test event",
         )
         assert event.id == "evt-123"
         assert event.severity == "info"
@@ -276,10 +268,8 @@ class TestEventModels:
     def test_event_filters(self):
         """Test EventFilters model."""
         from models.event import EventFilters, EventSeverity
-        filters = EventFilters(
-            severity=[EventSeverity.ERROR, EventSeverity.CRITICAL],
-            category=["transaction"]
-        )
+
+        filters = EventFilters(severity=[EventSeverity.ERROR, EventSeverity.CRITICAL], category=["transaction"])
         assert len(filters.severity) == 2
         assert "transaction" in filters.category
 
@@ -290,18 +280,20 @@ class TestTransactionRollbackModels:
     def test_rollback_request(self):
         """Test RollbackRequest model."""
         from models.transaction import RollbackRequest
+
         request = RollbackRequest(reason="Configuration caused errors")
         assert request.reason == "Configuration caused errors"
 
     def test_rollback_result(self):
         """Test RollbackResult model."""
         from models.transaction import RollbackResult
+
         result = RollbackResult(
             success=True,
             rollback_transaction_id="rollback-123",
             original_transaction_id="orig-456",
             restored_state={"files_restored": ["test.conf"]},
-            message="Successfully restored configuration"
+            message="Successfully restored configuration",
         )
         assert result.success is True
         assert result.rollback_transaction_id == "rollback-123"
@@ -315,13 +307,13 @@ class TestTransactionContext:
     def test_transaction_context_class(self):
         """Test TransactionContext class properties."""
         from core.transaction_context import TransactionContext
-        from models.transaction import Transaction, OperationType, TransactionStatus
+        from models.transaction import OperationType, Transaction, TransactionStatus
 
         txn = Transaction(
             id="test-ctx-123",
             operation=OperationType.NGINX_RELOAD,
             status=TransactionStatus.IN_PROGRESS,
-            resource_type="nginx"
+            resource_type="nginx",
         )
 
         ctx = TransactionContext(txn)
@@ -344,6 +336,7 @@ class TestTransactionExceptions:
     def test_transaction_error(self):
         """Test TransactionError exception."""
         from core.transaction_context import TransactionError
+
         error = TransactionError("Test error", transaction_id="txn-123")
         assert error.message == "Test error"
         assert error.transaction_id == "txn-123"
@@ -352,6 +345,7 @@ class TestTransactionExceptions:
     def test_rollback_error(self):
         """Test RollbackError exception."""
         from core.transaction_context import RollbackError
+
         error = RollbackError("Rollback failed", transaction_id="txn-456")
         assert error.message == "Rollback failed"
         assert error.transaction_id == "txn-456"
@@ -359,5 +353,6 @@ class TestTransactionExceptions:
     def test_snapshot_error(self):
         """Test SnapshotError exception."""
         from core.transaction_context import SnapshotError
+
         error = SnapshotError("Snapshot creation failed")
         assert error.message == "Snapshot creation failed"

@@ -7,18 +7,18 @@ compatible with OpenAI Custom GPT Actions requirements.
 
 import copy
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 def generate_gpt_schema(
-    openapi_schema: Dict[str, Any],
+    openapi_schema: dict[str, Any],
     server_url: str = "https://your-server.example.com:8000",
-    include_tags: Optional[List[str]] = None,
-    exclude_paths: Optional[List[str]] = None,
-    max_description_length: int = 300
-) -> Dict[str, Any]:
+    include_tags: list[str] | None = None,
+    exclude_paths: list[str] | None = None,
+    max_description_length: int = 300,
+) -> dict[str, Any]:
     """
     Transform FastAPI OpenAPI schema for GPT Actions compatibility.
 
@@ -47,18 +47,16 @@ def generate_gpt_schema(
     # 2. Add security scheme placeholder for Phase 5
     schema.setdefault("components", {})
     schema["components"]["securitySchemes"] = {
-        "apiKey": {
-            "type": "apiKey",
-            "in": "header",
-            "name": "X-API-Key",
-            "description": "API key for authentication"
-        }
+        "apiKey": {"type": "apiKey", "in": "header", "name": "X-API-Key", "description": "API key for authentication"}
     }
 
     # 3. Filter paths
     default_excludes = [
-        "/docs", "/redoc", "/openapi.json",
-        "/gpt/openapi.json", "/gpt/instructions",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/gpt/openapi.json",
+        "/gpt/instructions",
     ]
     all_excludes = set(default_excludes + (exclude_paths or []))
 
@@ -94,16 +92,16 @@ def generate_gpt_schema(
     return schema
 
 
-def _add_security_to_operations(schema: Dict[str, Any]) -> None:
+def _add_security_to_operations(schema: dict[str, Any]) -> None:
     """Add API key security requirement to all operations."""
-    for path, methods in schema.get("paths", {}).items():
+    for _path, methods in schema.get("paths", {}).items():
         for method, operation in methods.items():
             if method not in ("get", "post", "put", "delete", "patch"):
                 continue
             operation["security"] = [{"apiKey": []}]
 
 
-def _ensure_operation_ids(schema: Dict[str, Any]) -> None:
+def _ensure_operation_ids(schema: dict[str, Any]) -> None:
     """Ensure every operation has an operationId."""
     seen_ids = set()
     for path, methods in schema.get("paths", {}).items():
@@ -124,18 +122,18 @@ def _ensure_operation_ids(schema: Dict[str, Any]) -> None:
             seen_ids.add(operation["operationId"])
 
 
-def _truncate_descriptions(schema: Dict[str, Any], max_length: int = 300) -> None:
+def _truncate_descriptions(schema: dict[str, Any], max_length: int = 300) -> None:
     """Truncate descriptions to fit within GPT schema limits."""
-    for path, methods in schema.get("paths", {}).items():
+    for _path, methods in schema.get("paths", {}).items():
         for method, operation in methods.items():
             if method not in ("get", "post", "put", "delete", "patch"):
                 continue
             desc = operation.get("description", "")
             if len(desc) > max_length:
-                operation["description"] = desc[:max_length - 3] + "..."
+                operation["description"] = desc[: max_length - 3] + "..."
 
     # Also truncate the top-level description
     if "info" in schema:
         desc = schema["info"].get("description", "")
         if len(desc) > max_length:
-            schema["info"]["description"] = desc[:max_length - 3] + "..."
+            schema["info"]["description"] = desc[: max_length - 3] + "..."

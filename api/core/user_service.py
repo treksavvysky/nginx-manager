@@ -7,12 +7,11 @@ and account lockout. Passwords are hashed with bcrypt.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, List
 
 import bcrypt
 
 from core.database import get_database
-from models.auth import User, AuthContext, Role
+from models.auth import AuthContext, Role, User
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +22,7 @@ LOCKOUT_DURATION_MINUTES = 30
 
 class UserServiceError(Exception):
     """User service error with user-friendly message."""
+
     def __init__(self, message: str, code: str = "user_error"):
         self.message = message
         self.code = code
@@ -38,18 +38,12 @@ class UserService:
     @staticmethod
     def _hash_password(password: str) -> str:
         """Hash a password using bcrypt."""
-        return bcrypt.hashpw(
-            password.encode("utf-8"),
-            bcrypt.gensalt()
-        ).decode("utf-8")
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     @staticmethod
     def _verify_password(password: str, password_hash: str) -> bool:
         """Verify a password against a bcrypt hash."""
-        return bcrypt.checkpw(
-            password.encode("utf-8"),
-            password_hash.encode("utf-8")
-        )
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
     def _row_to_user(self, row: dict) -> User:
         """Convert a database row to a User model."""
@@ -61,7 +55,9 @@ class UserService:
             is_active=bool(row["is_active"]),
             created_at=datetime.fromisoformat(row["created_at"]),
             last_login=datetime.fromisoformat(row["last_login"]) if row["last_login"] else None,
-            password_changed_at=datetime.fromisoformat(row["password_changed_at"]) if row["password_changed_at"] else None,
+            password_changed_at=datetime.fromisoformat(row["password_changed_at"])
+            if row["password_changed_at"]
+            else None,
             failed_login_attempts=row["failed_login_attempts"] or 0,
             locked_until=datetime.fromisoformat(row["locked_until"]) if row["locked_until"] else None,
         )
@@ -71,7 +67,7 @@ class UserService:
         username: str,
         password: str,
         role: Role = Role.OPERATOR,
-        email: Optional[str] = None,
+        email: str | None = None,
     ) -> User:
         """
         Create a new user account.
@@ -80,15 +76,9 @@ class UserService:
             UserServiceError: If username already exists.
         """
         # Check for duplicate username
-        existing = await self.db.fetch_one(
-            "SELECT id FROM users WHERE username = ?",
-            (username,)
-        )
+        existing = await self.db.fetch_one("SELECT id FROM users WHERE username = ?", (username,))
         if existing:
-            raise UserServiceError(
-                f"Username '{username}' already exists",
-                code="username_exists"
-            )
+            raise UserServiceError(f"Username '{username}' already exists", code="username_exists")
 
         password_hash = self._hash_password(password)
         now = datetime.utcnow()
@@ -101,19 +91,22 @@ class UserService:
             password_changed_at=now,
         )
 
-        await self.db.insert("users", {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "password_hash": password_hash,
-            "role": user.role.value,
-            "is_active": True,
-            "created_at": user.created_at.isoformat(),
-            "last_login": None,
-            "password_changed_at": user.password_changed_at.isoformat(),
-            "failed_login_attempts": 0,
-            "locked_until": None,
-        })
+        await self.db.insert(
+            "users",
+            {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "password_hash": password_hash,
+                "role": user.role.value,
+                "is_active": True,
+                "created_at": user.created_at.isoformat(),
+                "last_login": None,
+                "password_changed_at": user.password_changed_at.isoformat(),
+                "failed_login_attempts": 0,
+                "locked_until": None,
+            },
+        )
 
         logger.info(f"Created user '{username}' (id={user.id}, role={role.value})")
         return user
@@ -122,17 +115,14 @@ class UserService:
         self,
         username: str,
         password: str,
-    ) -> Optional[AuthContext]:
+    ) -> AuthContext | None:
         """
         Authenticate a user by username and password.
 
         Returns AuthContext on success, None on failure.
         Implements account lockout after MAX_FAILED_ATTEMPTS failures.
         """
-        row = await self.db.fetch_one(
-            "SELECT * FROM users WHERE username = ?",
-            (username,)
-        )
+        row = await self.db.fetch_one("SELECT * FROM users WHERE username = ?", (username,))
 
         if not row:
             return None
@@ -149,8 +139,7 @@ class UserService:
                 return None
             # Lockout expired — reset counters
             await self.db.execute(
-                "UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?",
-                (row["id"],)
+                "UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?", (row["id"],)
             )
 
         # Verify password
@@ -162,8 +151,7 @@ class UserService:
                 locked_until = datetime.utcnow() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
                 update_data["locked_until"] = locked_until.isoformat()
                 logger.warning(
-                    f"User '{username}' locked after {failed} failed attempts "
-                    f"(until {locked_until.isoformat()})"
+                    f"User '{username}' locked after {failed} failed attempts (until {locked_until.isoformat()})"
                 )
 
             await self.db.update("users", row["id"], update_data)
@@ -171,11 +159,15 @@ class UserService:
 
         # Success — reset failed attempts and update last_login
         now = datetime.utcnow()
-        await self.db.update("users", row["id"], {
-            "failed_login_attempts": 0,
-            "locked_until": None,
-            "last_login": now.isoformat(),
-        })
+        await self.db.update(
+            "users",
+            row["id"],
+            {
+                "failed_login_attempts": 0,
+                "locked_until": None,
+                "last_login": now.isoformat(),
+            },
+        )
 
         return AuthContext(
             user_id=row["id"],
@@ -183,40 +175,32 @@ class UserService:
             auth_method="user",
         )
 
-    async def get_user(self, user_id: str) -> Optional[User]:
+    async def get_user(self, user_id: str) -> User | None:
         """Get a user by ID."""
-        row = await self.db.fetch_one(
-            "SELECT * FROM users WHERE id = ?",
-            (user_id,)
-        )
+        row = await self.db.fetch_one("SELECT * FROM users WHERE id = ?", (user_id,))
         if not row:
             return None
         return self._row_to_user(row)
 
-    async def get_user_by_username(self, username: str) -> Optional[User]:
+    async def get_user_by_username(self, username: str) -> User | None:
         """Get a user by username."""
-        row = await self.db.fetch_one(
-            "SELECT * FROM users WHERE username = ?",
-            (username,)
-        )
+        row = await self.db.fetch_one("SELECT * FROM users WHERE username = ?", (username,))
         if not row:
             return None
         return self._row_to_user(row)
 
-    async def list_users(self) -> List[User]:
+    async def list_users(self) -> list[User]:
         """List all users."""
-        rows = await self.db.fetch_all(
-            "SELECT * FROM users ORDER BY created_at DESC"
-        )
+        rows = await self.db.fetch_all("SELECT * FROM users ORDER BY created_at DESC")
         return [self._row_to_user(row) for row in rows]
 
     async def update_user(
         self,
         user_id: str,
-        email: Optional[str] = ...,
-        role: Optional[Role] = None,
-        is_active: Optional[bool] = None,
-    ) -> Optional[User]:
+        email: str | None = ...,
+        role: Role | None = None,
+        is_active: bool | None = None,
+    ) -> User | None:
         """
         Update user fields. Only provided fields are updated.
 
@@ -255,10 +239,7 @@ class UserService:
         Raises:
             UserServiceError: If user not found.
         """
-        row = await self.db.fetch_one(
-            "SELECT * FROM users WHERE id = ?",
-            (user_id,)
-        )
+        row = await self.db.fetch_one("SELECT * FROM users WHERE id = ?", (user_id,))
         if not row:
             raise UserServiceError("User not found", code="user_not_found")
 
@@ -267,10 +248,14 @@ class UserService:
 
         new_hash = self._hash_password(new_password)
         now = datetime.utcnow()
-        await self.db.update("users", user_id, {
-            "password_hash": new_hash,
-            "password_changed_at": now.isoformat(),
-        })
+        await self.db.update(
+            "users",
+            user_id,
+            {
+                "password_hash": new_hash,
+                "password_changed_at": now.isoformat(),
+            },
+        )
 
         logger.info(f"Password changed for user {user_id}")
         return True
@@ -288,21 +273,22 @@ class UserService:
         Raises:
             UserServiceError: If user not found.
         """
-        row = await self.db.fetch_one(
-            "SELECT id FROM users WHERE id = ?",
-            (user_id,)
-        )
+        row = await self.db.fetch_one("SELECT id FROM users WHERE id = ?", (user_id,))
         if not row:
             raise UserServiceError("User not found", code="user_not_found")
 
         new_hash = self._hash_password(new_password)
         now = datetime.utcnow()
-        await self.db.update("users", user_id, {
-            "password_hash": new_hash,
-            "password_changed_at": now.isoformat(),
-            "failed_login_attempts": 0,
-            "locked_until": None,
-        })
+        await self.db.update(
+            "users",
+            user_id,
+            {
+                "password_hash": new_hash,
+                "password_changed_at": now.isoformat(),
+                "failed_login_attempts": 0,
+                "locked_until": None,
+            },
+        )
 
         logger.info(f"Admin reset password for user {user_id}")
         return True
@@ -321,7 +307,7 @@ class UserService:
 
 
 # Singleton
-_user_service: Optional[UserService] = None
+_user_service: UserService | None = None
 
 
 def get_user_service() -> UserService:

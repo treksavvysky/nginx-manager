@@ -2,15 +2,15 @@
 Unit tests for the crossplane-based NGINX configuration parser.
 """
 
-import pytest
+import sys
 from pathlib import Path
 
-import sys
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "api"))
 
-from core.config_manager.crossplane_parser import CrossplaneParser
 from core.config_manager.adapter import ConfigAdapter
-
+from core.config_manager.crossplane_parser import CrossplaneParser
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "nginx_configs"
 
@@ -457,10 +457,10 @@ class TestIncludeResolution:
     def test_nonexistent_include_handled(self, parser):
         """Test that nonexistent include patterns don't cause errors."""
         # Create a temp config with nonexistent include
-        import tempfile
         import os
+        import tempfile
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as f:
             f.write("""
 server {
     listen 80;
@@ -481,10 +481,10 @@ server {
     def test_glob_pattern_resolution(self, parser):
         """Test that glob patterns in includes are resolved."""
         # Use wildcards to include all conf files
-        import tempfile
         import os
+        import tempfile
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False, dir=str(FIXTURES_DIR)) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False, dir=str(FIXTURES_DIR)) as f:
             f.write(f"""
 server {{
     listen 80;

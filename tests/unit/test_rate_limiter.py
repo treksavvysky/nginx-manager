@@ -4,8 +4,9 @@ Unit tests for rate limiting configuration.
 Tests rate limiter key generation and configuration.
 """
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 
 class TestRateLimiterKeyGeneration:
@@ -82,16 +83,18 @@ class TestRateLimiterInstance:
     def test_limiter_exists(self):
         """Global limiter instance is available."""
         from core.rate_limiter import limiter
+
         assert limiter is not None
 
     def test_default_limits_set(self):
         """Default rate limits are configured."""
         from core.rate_limiter import (
             DEFAULT_RATE_AUTH,
-            DEFAULT_RATE_UNAUTH,
             DEFAULT_RATE_MUTATION,
             DEFAULT_RATE_READ,
+            DEFAULT_RATE_UNAUTH,
         )
+
         assert "60" in DEFAULT_RATE_AUTH
         assert "10" in DEFAULT_RATE_UNAUTH
         assert "30" in DEFAULT_RATE_MUTATION
@@ -103,7 +106,7 @@ class TestEventAuditFields:
 
     def test_event_with_audit_fields(self):
         """Event model accepts audit fields."""
-        from models.event import Event, EventSeverity
+        from models.event import Event
 
         event = Event(
             category="config",
@@ -137,7 +140,8 @@ class TestEventStoreAudit:
     @pytest.mark.asyncio
     async def test_record_event_with_audit_fields(self):
         """record_event stores audit fields."""
-        from unittest.mock import patch, AsyncMock
+        from unittest.mock import AsyncMock, patch
+
         from core.event_store import EventStore
 
         mock_db = MagicMock()
@@ -164,7 +168,8 @@ class TestEventStoreAudit:
     @pytest.mark.asyncio
     async def test_record_api_event_extracts_context(self):
         """record_api_event extracts fields from AuthContext."""
-        from unittest.mock import patch, AsyncMock
+        from unittest.mock import AsyncMock, patch
+
         from core.event_store import EventStore
         from models.auth import AuthContext, Role
 

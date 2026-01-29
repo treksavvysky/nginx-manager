@@ -13,20 +13,19 @@ from typing import Union
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
-from core.auth_dependency import get_current_auth, require_role
-from models.auth import AuthContext, Role
-
-from models.workflow import (
-    SetupSiteRequest,
-    MigrateSiteRequest,
-    WorkflowResponse,
-    WorkflowDryRunResponse,
-    WorkflowType,
-    WorkflowProgressEvent,
-)
+from core.auth_dependency import require_role
 from core.workflow_definitions import (
-    build_setup_site_workflow,
     build_migrate_site_workflow,
+    build_setup_site_workflow,
+)
+from models.auth import AuthContext, Role
+from models.workflow import (
+    MigrateSiteRequest,
+    SetupSiteRequest,
+    WorkflowDryRunResponse,
+    WorkflowProgressEvent,
+    WorkflowResponse,
+    WorkflowType,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,7 +62,7 @@ router = APIRouter(prefix="/workflows", tags=["Agent Workflows"])
         200: {"description": "Workflow completed (or dry-run preview)"},
         400: {"description": "Invalid request parameters"},
         422: {"description": "Validation error"},
-    }
+    },
 )
 async def setup_site(
     request: SetupSiteRequest,
@@ -110,7 +109,7 @@ async def setup_site(
         200: {"description": "Workflow completed (or dry-run preview)"},
         400: {"description": "Invalid request parameters"},
         422: {"description": "Validation error"},
-    }
+    },
 )
 async def migrate_site(
     request: MigrateSiteRequest,
@@ -137,34 +136,45 @@ async def migrate_site(
 # Dry-Run Helpers
 # =============================================================================
 
+
 def _dry_run_setup_site(context: dict) -> WorkflowDryRunResponse:
     """Preview setup-site workflow steps."""
     request_ssl = context.get("request_ssl", False)
 
     steps = [
         {"step": 1, "name": "check_prerequisites", "action": "Check NGINX is running and site name is available"},
-        {"step": 2, "name": "create_site", "action": f"Create {context.get('site_type', 'static')} site '{context['name']}'", "is_checkpoint": True},
+        {
+            "step": 2,
+            "name": "create_site",
+            "action": f"Create {context.get('site_type', 'static')} site '{context['name']}'",
+            "is_checkpoint": True,
+        },
         {"step": 3, "name": "verify_site", "action": "Verify NGINX config is valid after creation"},
     ]
 
     if request_ssl:
         domain = context["server_names"][0] if context.get("server_names") else context["name"]
-        steps.extend([
-            {"step": 4, "name": "diagnose_ssl", "action": f"Check DNS/port prerequisites for {domain}"},
-            {"step": 5, "name": "request_certificate", "action": f"Request Let's Encrypt certificate for {domain}", "is_checkpoint": True},
-            {"step": 6, "name": "verify_ssl", "action": "Verify SSL installation and config validity"},
-        ])
+        steps.extend(
+            [
+                {"step": 4, "name": "diagnose_ssl", "action": f"Check DNS/port prerequisites for {domain}"},
+                {
+                    "step": 5,
+                    "name": "request_certificate",
+                    "action": f"Request Let's Encrypt certificate for {domain}",
+                    "is_checkpoint": True,
+                },
+                {"step": 6, "name": "verify_ssl", "action": "Verify SSL installation and config validity"},
+            ]
+        )
 
     return WorkflowDryRunResponse(
         workflow_type=WorkflowType.SETUP_SITE,
         would_succeed=True,
         message=f"Would execute {len(steps)} steps to setup site '{context['name']}'",
         steps=steps,
-        warnings=[] if request_ssl else [
-            {"code": "no_ssl", "message": "SSL not requested. Site will be HTTP-only."}
-        ],
+        warnings=[] if request_ssl else [{"code": "no_ssl", "message": "SSL not requested. Site will be HTTP-only."}],
         prerequisites_met=True,
-        missing_prerequisites=[]
+        missing_prerequisites=[],
     )
 
 
@@ -182,7 +192,12 @@ def _dry_run_migrate_site(context: dict) -> WorkflowDryRunResponse:
 
     steps = [
         {"step": 1, "name": "verify_exists", "action": f"Verify site '{context['name']}' exists"},
-        {"step": 2, "name": "update_site", "action": f"Update configuration: {', '.join(changes) or 'no changes specified'}", "is_checkpoint": True},
+        {
+            "step": 2,
+            "name": "update_site",
+            "action": f"Update configuration: {', '.join(changes) or 'no changes specified'}",
+            "is_checkpoint": True,
+        },
         {"step": 3, "name": "test_config", "action": "Validate NGINX config after update"},
     ]
 
@@ -197,13 +212,14 @@ def _dry_run_migrate_site(context: dict) -> WorkflowDryRunResponse:
         steps=steps,
         warnings=warnings,
         prerequisites_met=True,
-        missing_prerequisites=[]
+        missing_prerequisites=[],
     )
 
 
 # =============================================================================
 # SSE Streaming
 # =============================================================================
+
 
 def _stream_workflow(engine, context: dict) -> StreamingResponse:
     """Create an SSE streaming response for workflow progress."""
@@ -223,7 +239,7 @@ def _stream_workflow(engine, context: dict) -> StreamingResponse:
             try:
                 event = await asyncio.wait_for(progress_queue.get(), timeout=1.0)
                 yield f"event: {event.event_type}\ndata: {json.dumps(event.model_dump(), default=str)}\n\n"
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 yield ": keepalive\n\n"
 
         # Drain remaining events
@@ -242,5 +258,5 @@ def _stream_workflow(engine, context: dict) -> StreamingResponse:
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-        }
+        },
     )

@@ -4,15 +4,13 @@ Unit tests for dry-run mode on mutation endpoints.
 Tests that dry_run=true returns preview responses without making changes.
 """
 
-import pytest
-from datetime import datetime
-from unittest.mock import AsyncMock, patch, MagicMock
-from pathlib import Path
-from contextlib import asynccontextmanager
-import tempfile
-import shutil
-
 import sys
+from contextlib import asynccontextmanager
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "api"))
 
 from httpx import ASGITransport, AsyncClient
@@ -58,24 +56,22 @@ class TestSiteCreateDryRun:
         conf_dir = tmp_path / "conf.d"
         conf_dir.mkdir()
 
-        with patch("endpoints.sites.get_nginx_conf_path", return_value=conf_dir), \
-             patch("endpoints.sites.docker_service") as mock_docker, \
-             patch("endpoints.sites.settings") as mock_settings:
-
+        with (
+            patch("endpoints.sites.get_nginx_conf_path", return_value=conf_dir),
+            patch("endpoints.sites.docker_service") as mock_docker,
+            patch("endpoints.sites.settings") as mock_settings,
+        ):
             mock_settings.validate_before_deploy = False
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post(
                     "/sites/?dry_run=true",
                     json={
                         "name": "test-site",
                         "server_names": ["test.local"],
                         "site_type": "static",
-                        "root_path": "/var/www/test"
-                    }
+                        "root_path": "/var/www/test",
+                    },
                 )
 
             assert response.status_code == 201
@@ -98,18 +94,15 @@ class TestSiteCreateDryRun:
         (conf_dir / "existing.conf").write_text("# existing config")
 
         with patch("endpoints.sites.get_nginx_conf_path", return_value=conf_dir):
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post(
                     "/sites/?dry_run=true",
                     json={
                         "name": "existing",
                         "server_names": ["existing.local"],
                         "site_type": "static",
-                        "root_path": "/var/www/test"
-                    }
+                        "root_path": "/var/www/test",
+                    },
                 )
 
             assert response.status_code == 201
@@ -135,22 +128,15 @@ class TestSiteUpdateDryRun:
 }"""
         (conf_dir / "test-site.conf").write_text(original_content)
 
-        with patch("endpoints.sites.get_nginx_conf_path", return_value=conf_dir), \
-             patch("endpoints.sites.docker_service") as mock_docker, \
-             patch("endpoints.sites.settings") as mock_settings:
-
+        with (
+            patch("endpoints.sites.get_nginx_conf_path", return_value=conf_dir),
+            patch("endpoints.sites.docker_service") as mock_docker,
+            patch("endpoints.sites.settings") as mock_settings,
+        ):
             mock_settings.validate_before_deploy = False
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
-                response = await client.put(
-                    "/sites/test-site?dry_run=true",
-                    json={
-                        "listen_port": 8080
-                    }
-                )
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.put("/sites/test-site?dry_run=true", json={"listen_port": 8080})
 
             assert response.status_code == 200
             data = response.json()
@@ -170,14 +156,8 @@ class TestSiteUpdateDryRun:
         conf_dir.mkdir()
 
         with patch("endpoints.sites.get_nginx_conf_path", return_value=conf_dir):
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
-                response = await client.put(
-                    "/sites/nonexistent?dry_run=true",
-                    json={"listen_port": 8080}
-                )
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.put("/sites/nonexistent?dry_run=true", json={"listen_port": 8080})
 
             assert response.status_code == 200
             data = response.json()
@@ -199,10 +179,7 @@ class TestSiteDeleteDryRun:
         (conf_dir / "test-site.conf").write_text(content)
 
         with patch("endpoints.sites.get_nginx_conf_path", return_value=conf_dir):
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.delete("/sites/test-site?dry_run=true")
 
             assert response.status_code == 200
@@ -223,10 +200,7 @@ class TestSiteDeleteDryRun:
         conf_dir.mkdir()
 
         with patch("endpoints.sites.get_nginx_conf_path", return_value=conf_dir):
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.delete("/sites/nonexistent?dry_run=true")
 
             assert response.status_code == 200
@@ -248,16 +222,14 @@ class TestSiteEnableDisableDryRun:
         content = "server { listen 80; }"
         (conf_dir / "test-site.conf.disabled").write_text(content)
 
-        with patch("endpoints.sites.get_nginx_conf_path", return_value=conf_dir), \
-             patch("endpoints.sites.docker_service") as mock_docker, \
-             patch("endpoints.sites.settings") as mock_settings:
-
+        with (
+            patch("endpoints.sites.get_nginx_conf_path", return_value=conf_dir),
+            patch("endpoints.sites.docker_service") as mock_docker,
+            patch("endpoints.sites.settings") as mock_settings,
+        ):
             mock_settings.validate_before_deploy = False
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/sites/test-site/enable?dry_run=true")
 
             assert response.status_code == 200
@@ -280,10 +252,7 @@ class TestSiteEnableDisableDryRun:
         (conf_dir / "test-site.conf").write_text(content)
 
         with patch("endpoints.sites.get_nginx_conf_path", return_value=conf_dir):
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/sites/test-site/disable?dry_run=true")
 
             assert response.status_code == 200
@@ -311,14 +280,9 @@ class TestNginxReloadDryRun:
 
         with patch("endpoints.nginx.docker_service") as mock_docker:
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
-            mock_docker.test_config = AsyncMock(
-                return_value=(True, "", "nginx: configuration file test is successful")
-            )
+            mock_docker.test_config = AsyncMock(return_value=(True, "", "nginx: configuration file test is successful"))
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/reload?dry_run=true")
 
             assert response.status_code == 200
@@ -344,14 +308,9 @@ class TestNginxReloadDryRun:
 
         with patch("endpoints.nginx.docker_service") as mock_docker:
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
-            mock_docker.test_config = AsyncMock(
-                return_value=(False, "", "nginx: configuration file test failed")
-            )
+            mock_docker.test_config = AsyncMock(return_value=(False, "", "nginx: configuration file test failed"))
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/reload?dry_run=true")
 
             assert response.status_code == 200
@@ -375,14 +334,9 @@ class TestNginxRestartDryRun:
 
         with patch("endpoints.nginx.docker_service") as mock_docker:
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
-            mock_docker.test_config = AsyncMock(
-                return_value=(True, "", "nginx: configuration file test is successful")
-            )
+            mock_docker.test_config = AsyncMock(return_value=(True, "", "nginx: configuration file test is successful"))
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/restart?dry_run=true")
 
             assert response.status_code == 200
@@ -409,14 +363,9 @@ class TestNginxRestartDryRun:
 
         with patch("endpoints.nginx.docker_service") as mock_docker:
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
-            mock_docker.test_config = AsyncMock(
-                return_value=(True, "", "nginx: configuration file test is successful")
-            )
+            mock_docker.test_config = AsyncMock(return_value=(True, "", "nginx: configuration file test is successful"))
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/restart?dry_run=true")
 
             assert response.status_code == 200

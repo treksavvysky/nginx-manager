@@ -6,15 +6,16 @@ NGINX site configurations with full validation.
 """
 
 import re
-from enum import Enum
-from typing import Optional, List, Dict
 from datetime import datetime
+from enum import Enum
 from urllib.parse import urlparse
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class SiteType(str, Enum):
     """Type of site configuration."""
+
     STATIC = "static"
     REVERSE_PROXY = "reverse_proxy"
 
@@ -22,49 +23,20 @@ class SiteType(str, Enum):
 class SiteCreateRequest(BaseModel):
     """Request to create a new site configuration."""
 
-    name: str = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        description="Site identifier (becomes the config filename)"
-    )
-    server_names: List[str] = Field(
-        ...,
-        min_length=1,
-        description="Domain names for server_name directive"
-    )
-    site_type: SiteType = Field(
-        ...,
-        description="Type of site: static file serving or reverse proxy"
-    )
-    listen_port: int = Field(
-        default=80,
-        ge=1,
-        le=65535,
-        description="Port to listen on"
-    )
+    name: str = Field(..., min_length=1, max_length=100, description="Site identifier (becomes the config filename)")
+    server_names: list[str] = Field(..., min_length=1, description="Domain names for server_name directive")
+    site_type: SiteType = Field(..., description="Type of site: static file serving or reverse proxy")
+    listen_port: int = Field(default=80, ge=1, le=65535, description="Port to listen on")
 
     # Static site options
-    root_path: Optional[str] = Field(
-        None,
-        description="Document root path (required for static sites)"
-    )
-    index_files: List[str] = Field(
-        default=["index.html", "index.htm"],
-        description="Index files for static sites"
-    )
+    root_path: str | None = Field(None, description="Document root path (required for static sites)")
+    index_files: list[str] = Field(default=["index.html", "index.htm"], description="Index files for static sites")
 
     # Reverse proxy options
-    proxy_pass: Optional[str] = Field(
-        None,
-        description="Upstream URL (required for reverse proxy sites)"
-    )
+    proxy_pass: str | None = Field(None, description="Upstream URL (required for reverse proxy sites)")
 
     # Operation options
-    auto_reload: bool = Field(
-        default=False,
-        description="Automatically reload NGINX after creating the site"
-    )
+    auto_reload: bool = Field(default=False, description="Automatically reload NGINX after creating the site")
 
     @field_validator("name")
     @classmethod
@@ -83,7 +55,7 @@ class SiteCreateRequest(BaseModel):
 
     @field_validator("server_names")
     @classmethod
-    def validate_server_names(cls, v: List[str]) -> List[str]:
+    def validate_server_names(cls, v: list[str]) -> list[str]:
         """Validate server names."""
         validated = []
         for name in v:
@@ -100,7 +72,7 @@ class SiteCreateRequest(BaseModel):
 
     @field_validator("root_path")
     @classmethod
-    def validate_root_path(cls, v: Optional[str]) -> Optional[str]:
+    def validate_root_path(cls, v: str | None) -> str | None:
         """Validate root path is absolute."""
         if v is not None:
             if not v.startswith("/"):
@@ -111,7 +83,7 @@ class SiteCreateRequest(BaseModel):
 
     @field_validator("proxy_pass")
     @classmethod
-    def validate_proxy_pass(cls, v: Optional[str]) -> Optional[str]:
+    def validate_proxy_pass(cls, v: str | None) -> str | None:
         """Validate proxy pass URL with strict parsing."""
         if v is None:
             return v
@@ -154,36 +126,16 @@ class SiteCreateRequest(BaseModel):
 class SiteUpdateRequest(BaseModel):
     """Request to update an existing site configuration."""
 
-    server_names: Optional[List[str]] = Field(
-        None,
-        description="Updated domain names"
-    )
-    listen_port: Optional[int] = Field(
-        None,
-        ge=1,
-        le=65535,
-        description="Updated listen port"
-    )
-    root_path: Optional[str] = Field(
-        None,
-        description="Updated document root (for static sites)"
-    )
-    proxy_pass: Optional[str] = Field(
-        None,
-        description="Updated upstream URL (for reverse proxy sites)"
-    )
-    index_files: Optional[List[str]] = Field(
-        None,
-        description="Updated index files (for static sites)"
-    )
-    auto_reload: bool = Field(
-        default=False,
-        description="Automatically reload NGINX after update"
-    )
+    server_names: list[str] | None = Field(None, description="Updated domain names")
+    listen_port: int | None = Field(None, ge=1, le=65535, description="Updated listen port")
+    root_path: str | None = Field(None, description="Updated document root (for static sites)")
+    proxy_pass: str | None = Field(None, description="Updated upstream URL (for reverse proxy sites)")
+    index_files: list[str] | None = Field(None, description="Updated index files (for static sites)")
+    auto_reload: bool = Field(default=False, description="Automatically reload NGINX after update")
 
     @field_validator("server_names")
     @classmethod
-    def validate_server_names(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+    def validate_server_names(cls, v: list[str] | None) -> list[str] | None:
         """Validate server names if provided."""
         if v is None:
             return v
@@ -201,7 +153,7 @@ class SiteUpdateRequest(BaseModel):
 
     @field_validator("root_path")
     @classmethod
-    def validate_root_path(cls, v: Optional[str]) -> Optional[str]:
+    def validate_root_path(cls, v: str | None) -> str | None:
         """Validate root path is absolute."""
         if v is not None:
             if not v.startswith("/"):
@@ -212,7 +164,7 @@ class SiteUpdateRequest(BaseModel):
 
     @field_validator("proxy_pass")
     @classmethod
-    def validate_proxy_pass(cls, v: Optional[str]) -> Optional[str]:
+    def validate_proxy_pass(cls, v: str | None) -> str | None:
         """Validate proxy pass URL with strict parsing."""
         if v is None:
             return v
@@ -238,10 +190,7 @@ class SiteUpdateRequest(BaseModel):
 class SiteEnableDisableRequest(BaseModel):
     """Request to enable or disable a site."""
 
-    auto_reload: bool = Field(
-        default=False,
-        description="Automatically reload NGINX after enabling/disabling"
-    )
+    auto_reload: bool = Field(default=False, description="Automatically reload NGINX after enabling/disabling")
 
 
 class SiteMutationResponse(BaseModel):
@@ -252,32 +201,16 @@ class SiteMutationResponse(BaseModel):
     site_name: str = Field(..., description="Name of the affected site")
     transaction_id: str = Field(..., description="Transaction ID for audit/rollback")
     file_path: str = Field(..., description="Path to the config file")
-    reload_required: bool = Field(
-        default=True,
-        description="Whether NGINX reload is needed to apply changes"
-    )
-    reloaded: bool = Field(
-        default=False,
-        description="Whether NGINX was reloaded"
-    )
-    enabled: bool = Field(
-        default=True,
-        description="Whether the site is currently enabled"
-    )
-    created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="When the operation was performed"
-    )
+    reload_required: bool = Field(default=True, description="Whether NGINX reload is needed to apply changes")
+    reloaded: bool = Field(default=False, description="Whether NGINX was reloaded")
+    enabled: bool = Field(default=True, description="Whether the site is currently enabled")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="When the operation was performed")
 
     # Rich context for AI agents
-    suggestions: List[Dict] = Field(
-        default_factory=list,
-        description="Suggested next actions based on the operation result"
+    suggestions: list[dict] = Field(
+        default_factory=list, description="Suggested next actions based on the operation result"
     )
-    warnings: List[Dict] = Field(
-        default_factory=list,
-        description="Non-blocking warnings about the configuration"
-    )
+    warnings: list[dict] = Field(default_factory=list, description="Non-blocking warnings about the configuration")
 
 
 class SiteDeleteResponse(BaseModel):
@@ -287,24 +220,14 @@ class SiteDeleteResponse(BaseModel):
     message: str = Field(..., description="Human-readable result message")
     site_name: str = Field(..., description="Name of the deleted site")
     transaction_id: str = Field(..., description="Transaction ID for audit/rollback")
-    reload_required: bool = Field(
-        default=True,
-        description="Whether NGINX reload is needed"
-    )
-    reloaded: bool = Field(
-        default=False,
-        description="Whether NGINX was reloaded"
-    )
+    reload_required: bool = Field(default=True, description="Whether NGINX reload is needed")
+    reloaded: bool = Field(default=False, description="Whether NGINX was reloaded")
 
     # Rich context for AI agents
-    suggestions: List[Dict] = Field(
-        default_factory=list,
-        description="Suggested next actions based on the operation result"
+    suggestions: list[dict] = Field(
+        default_factory=list, description="Suggested next actions based on the operation result"
     )
-    warnings: List[Dict] = Field(
-        default_factory=list,
-        description="Non-blocking warnings about the configuration"
-    )
+    warnings: list[dict] = Field(default_factory=list, description="Non-blocking warnings about the configuration")
 
 
 class ValidationWarning(BaseModel):
@@ -312,7 +235,7 @@ class ValidationWarning(BaseModel):
 
     code: str = Field(..., description="Warning code (e.g., 'missing_index')")
     message: str = Field(..., description="Human-readable warning message")
-    suggestion: Optional[str] = Field(None, description="How to fix the warning")
+    suggestion: str | None = Field(None, description="How to fix the warning")
 
 
 class DryRunDiff(BaseModel):
@@ -320,8 +243,8 @@ class DryRunDiff(BaseModel):
 
     operation: str = Field(..., description="Operation type: create, update, delete, enable, disable")
     file_path: str = Field(..., description="Path to the config file that would be affected")
-    current_content: Optional[str] = Field(None, description="Current file content (for update/delete)")
-    new_content: Optional[str] = Field(None, description="New file content (for create/update)")
+    current_content: str | None = Field(None, description="Current file content (for update/delete)")
+    new_content: str | None = Field(None, description="New file content (for create/update)")
     lines_added: int = Field(default=0, description="Number of lines that would be added")
     lines_removed: int = Field(default=0, description="Number of lines that would be removed")
 
@@ -340,39 +263,22 @@ class DryRunResult(BaseModel):
     message: str = Field(..., description="Summary of what would happen")
 
     # Validation
-    validation_passed: bool = Field(
-        default=True,
-        description="Whether NGINX config validation would pass"
-    )
-    validation_output: Optional[str] = Field(
-        None,
-        description="Output from nginx -t validation"
-    )
+    validation_passed: bool = Field(default=True, description="Whether NGINX config validation would pass")
+    validation_output: str | None = Field(None, description="Output from nginx -t validation")
 
     # Warnings (non-blocking issues)
-    warnings: List[ValidationWarning] = Field(
-        default_factory=list,
-        description="Non-blocking warnings about the configuration"
+    warnings: list[ValidationWarning] = Field(
+        default_factory=list, description="Non-blocking warnings about the configuration"
     )
 
     # What would change
-    diff: Optional[DryRunDiff] = Field(
-        None,
-        description="Details of what would change"
-    )
+    diff: DryRunDiff | None = Field(None, description="Details of what would change")
 
     # Impact analysis
-    affected_sites: List[str] = Field(
-        default_factory=list,
-        description="Sites that would be affected by this operation"
+    affected_sites: list[str] = Field(
+        default_factory=list, description="Sites that would be affected by this operation"
     )
-    reload_required: bool = Field(
-        default=True,
-        description="Whether NGINX reload would be needed"
-    )
+    reload_required: bool = Field(default=True, description="Whether NGINX reload would be needed")
 
     # For create/update operations
-    generated_config: Optional[str] = Field(
-        None,
-        description="The NGINX config that would be generated"
-    )
+    generated_config: str | None = Field(None, description="The NGINX config that would be generated")

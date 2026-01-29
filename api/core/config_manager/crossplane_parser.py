@@ -6,23 +6,23 @@ and upstream parsing. Replaces the regex-based parser for reliable
 AI-agent-ready configuration parsing.
 """
 
-import crossplane
 import glob as glob_module
-from pathlib import Path
-from typing import Optional, List, Dict, Any, Set
-from datetime import datetime
 import logging
+from datetime import datetime
+from pathlib import Path
+
+import crossplane
 
 from models.nginx import (
+    GeoBlock,
+    ListenDirective,
+    LocationBlock,
+    MapBlock,
     ParsedNginxConfig,
     ServerBlock,
-    LocationBlock,
+    SSLConfig,
     UpstreamBlock,
     UpstreamServer,
-    ListenDirective,
-    SSLConfig,
-    MapBlock,
-    GeoBlock,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,14 +33,14 @@ class CrossplaneParser:
 
     def __init__(self):
         """Initialize the parser with tracking for circular include detection."""
-        self._parsing_files: Set[str] = set()
+        self._parsing_files: set[str] = set()
 
     def parse_config_file(
         self,
         file_path: Path,
         resolve_includes: bool = False,
-        _visited: Optional[Set[str]] = None,
-    ) -> Optional[ParsedNginxConfig]:
+        _visited: set[str] | None = None,
+    ) -> ParsedNginxConfig | None:
         """
         Parse a single NGINX configuration file.
 
@@ -150,9 +150,7 @@ class CrossplaneParser:
             # Resolve includes if requested (process all collected includes)
             if resolve_includes and includes:
                 for include_pattern in includes:
-                    resolved_files = self._resolve_include_pattern(
-                        include_pattern, file_path.parent
-                    )
+                    resolved_files = self._resolve_include_pattern(include_pattern, file_path.parent)
                     resolved_includes.extend(resolved_files)
 
                     # Parse included files
@@ -186,9 +184,7 @@ class CrossplaneParser:
             logger.error(f"Error parsing config file {file_path}: {e}")
             return None
 
-    def _extract_includes_recursive(
-        self, directives: List[Dict], includes: List[str]
-    ) -> None:
+    def _extract_includes_recursive(self, directives: list[dict], includes: list[str]) -> None:
         """
         Recursively extract all include patterns from a directive tree.
 
@@ -210,9 +206,7 @@ class CrossplaneParser:
             if block:
                 self._extract_includes_recursive(block, includes)
 
-    def _resolve_include_pattern(
-        self, pattern: str, base_dir: Path
-    ) -> List[str]:
+    def _resolve_include_pattern(self, pattern: str, base_dir: Path) -> list[str]:
         """
         Resolve an include pattern to actual file paths.
 
@@ -249,9 +243,7 @@ class CrossplaneParser:
 
         return resolved
 
-    def _parse_map_block(
-        self, args: List[str], block: List[Dict], line: int
-    ) -> MapBlock:
+    def _parse_map_block(self, args: list[str], block: list[dict], line: int) -> MapBlock:
         """
         Parse a map directive block.
 
@@ -302,9 +294,7 @@ class CrossplaneParser:
             line=line,
         )
 
-    def _parse_geo_block(
-        self, args: List[str], block: List[Dict], line: int
-    ) -> GeoBlock:
+    def _parse_geo_block(self, args: list[str], block: list[dict], line: int) -> GeoBlock:
         """
         Parse a geo directive block.
 
@@ -375,7 +365,7 @@ class CrossplaneParser:
             line=line,
         )
 
-    def _parse_server_block(self, block: List[Dict], line: int) -> ServerBlock:
+    def _parse_server_block(self, block: list[dict], line: int) -> ServerBlock:
         """Extract structured ServerBlock from raw directives."""
         server_names = []
         listen_directives = []
@@ -500,9 +490,7 @@ class CrossplaneParser:
             line=line,
         )
 
-    def _parse_location_block(
-        self, args: List[str], block: List[Dict], line: int
-    ) -> LocationBlock:
+    def _parse_location_block(self, args: list[str], block: list[dict], line: int) -> LocationBlock:
         """Extract LocationBlock from location directive."""
         # Parse location modifier and path
         modifier = None
@@ -558,11 +546,13 @@ class CrossplaneParser:
                         return_value = " ".join(directive_args)
 
             elif name == "rewrite":
-                rewrite_rules.append({
-                    "pattern": directive_args[0] if directive_args else None,
-                    "replacement": directive_args[1] if len(directive_args) > 1 else None,
-                    "flag": directive_args[2] if len(directive_args) > 2 else None,
-                })
+                rewrite_rules.append(
+                    {
+                        "pattern": directive_args[0] if directive_args else None,
+                        "replacement": directive_args[1] if len(directive_args) > 1 else None,
+                        "flag": directive_args[2] if len(directive_args) > 2 else None,
+                    }
+                )
 
             elif name in ("proxy_set_header", "add_header"):
                 if len(directive_args) >= 2:
@@ -570,9 +560,7 @@ class CrossplaneParser:
 
             else:
                 if directive_args:
-                    other_directives[name] = (
-                        directive_args[0] if len(directive_args) == 1 else directive_args
-                    )
+                    other_directives[name] = directive_args[0] if len(directive_args) == 1 else directive_args
 
         return LocationBlock(
             modifier=modifier,
@@ -590,9 +578,7 @@ class CrossplaneParser:
             line=line,
         )
 
-    def _parse_upstream_block(
-        self, name: str, block: List[Dict], line: int
-    ) -> UpstreamBlock:
+    def _parse_upstream_block(self, name: str, block: list[dict], line: int) -> UpstreamBlock:
         """Extract UpstreamBlock from upstream directive."""
         servers = []
         load_balancing = None
@@ -625,7 +611,7 @@ class CrossplaneParser:
             line=line,
         )
 
-    def _parse_upstream_server(self, args: List[str]) -> UpstreamServer:
+    def _parse_upstream_server(self, args: list[str]) -> UpstreamServer:
         """Parse upstream server directive arguments."""
         address = args[0] if args else ""
         weight = None
@@ -635,7 +621,7 @@ class CrossplaneParser:
         down = False
 
         # Parse additional parameters
-        for i, arg in enumerate(args[1:], 1):
+        for _i, arg in enumerate(args[1:], 1):
             if arg.startswith("weight="):
                 try:
                     weight = int(arg.split("=")[1])
@@ -662,7 +648,7 @@ class CrossplaneParser:
             down=down,
         )
 
-    def _parse_listen_directive(self, args: List[str]) -> ListenDirective:
+    def _parse_listen_directive(self, args: list[str]) -> ListenDirective:
         """Parse listen directive arguments into structured form."""
         port = 80
         address = None
@@ -672,8 +658,7 @@ class CrossplaneParser:
 
         if not args:
             return ListenDirective(
-                port=port, address=address, ssl=ssl, http2=http2,
-                default_server=default_server, raw_args=args
+                port=port, address=address, ssl=ssl, http2=http2, default_server=default_server, raw_args=args
             )
 
         first_arg = args[0]

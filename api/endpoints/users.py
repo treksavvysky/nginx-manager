@@ -6,21 +6,21 @@ User creation, authentication, listing, and password management.
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
-from core.auth_service import get_auth_service
-from core.user_service import get_user_service, UserServiceError
 from core.auth_dependency import get_current_auth, require_role
+from core.auth_service import get_auth_service
+from core.user_service import UserServiceError, get_user_service
 from models.auth import (
-    Role,
     AuthContext,
-    User,
-    UserCreateRequest,
-    UserUpdateRequest,
-    UserListResponse,
     LoginRequest,
     LoginResponse,
     PasswordChangeRequest,
+    Role,
+    User,
+    UserCreateRequest,
+    UserListResponse,
+    UserUpdateRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
         200: {"description": "Login successful, JWT token returned"},
         401: {"description": "Invalid credentials or account locked"},
         400: {"description": "JWT not configured"},
-    }
+    },
 )
 async def login(request: LoginRequest):
     """Authenticate and receive a JWT token."""
@@ -85,7 +85,7 @@ async def login(request: LoginRequest):
         400: {"description": "Validation error or username taken"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions"},
-    }
+    },
 )
 async def create_user(
     request: UserCreateRequest,
@@ -115,7 +115,7 @@ async def create_user(
         200: {"description": "List of users"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions"},
-    }
+    },
 )
 async def list_users(
     auth: AuthContext = Depends(require_role(Role.ADMIN)),
@@ -127,18 +127,22 @@ async def list_users(
     suggestions = []
     locked = [u for u in users if u.is_locked]
     if locked:
-        suggestions.append({
-            "action": f"{len(locked)} user(s) are currently locked out",
-            "reason": "Accounts lock after 5 failed login attempts for 30 minutes",
-            "priority": "medium"
-        })
+        suggestions.append(
+            {
+                "action": f"{len(locked)} user(s) are currently locked out",
+                "reason": "Accounts lock after 5 failed login attempts for 30 minutes",
+                "priority": "medium",
+            }
+        )
     inactive = [u for u in users if not u.is_active]
     if inactive:
-        suggestions.append({
-            "action": f"{len(inactive)} user(s) are deactivated",
-            "reason": "Deactivated users cannot log in",
-            "priority": "low"
-        })
+        suggestions.append(
+            {
+                "action": f"{len(inactive)} user(s) are deactivated",
+                "reason": "Deactivated users cannot log in",
+                "priority": "low",
+            }
+        )
 
     return UserListResponse(
         users=users,
@@ -157,7 +161,7 @@ async def list_users(
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions"},
         404: {"description": "User not found"},
-    }
+    },
 )
 async def get_user(
     user_id: str,
@@ -189,7 +193,7 @@ async def get_user(
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions"},
         404: {"description": "User not found"},
-    }
+    },
 )
 async def update_user(
     user_id: str,
@@ -228,7 +232,7 @@ async def update_user(
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions"},
         404: {"description": "User not found"},
-    }
+    },
 )
 async def change_password(
     user_id: str,
@@ -253,21 +257,15 @@ async def change_password(
             # as the "current_password" for safety
             admin_row = None
             if auth.user_id:
-                admin_row = await user_service.db.fetch_one(
-                    "SELECT * FROM users WHERE id = ?", (auth.user_id,)
-                )
-            if admin_row and not user_service._verify_password(
-                request.current_password, admin_row["password_hash"]
-            ):
+                admin_row = await user_service.db.fetch_one("SELECT * FROM users WHERE id = ?", (auth.user_id,))
+            if admin_row and not user_service._verify_password(request.current_password, admin_row["password_hash"]):
                 raise HTTPException(
                     status_code=400,
                     detail="Your admin password is incorrect.",
                 )
             success = await user_service.admin_reset_password(user_id, request.new_password)
         else:
-            success = await user_service.change_password(
-                user_id, request.current_password, request.new_password
-            )
+            success = await user_service.change_password(user_id, request.current_password, request.new_password)
     except UserServiceError as e:
         raise HTTPException(status_code=404, detail=e.message)
 
@@ -284,9 +282,9 @@ async def change_password(
             {
                 "action": "Use the new password for future logins",
                 "reason": "The old password is no longer valid",
-                "priority": "high"
+                "priority": "high",
             }
-        ]
+        ],
     }
 
 
@@ -300,7 +298,7 @@ async def change_password(
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions"},
         404: {"description": "User not found"},
-    }
+    },
 )
 async def delete_user(
     user_id: str,
@@ -328,7 +326,7 @@ async def delete_user(
             {
                 "action": "Revoke any JWT tokens issued to this user",
                 "reason": "Existing tokens remain valid until expiry",
-                "priority": "medium"
+                "priority": "medium",
             }
-        ]
+        ],
     }

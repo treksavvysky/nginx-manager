@@ -4,22 +4,23 @@ Unit tests for certificate models.
 Tests the Pydantic models for SSL certificate management.
 """
 
-import pytest
 from datetime import datetime, timedelta
+
+import pytest
 from pydantic import ValidationError
 
 from models.certificate import (
+    ACMEAccount,
     Certificate,
-    CertificateStatus,
-    CertificateType,
-    CertificateRequestCreate,
-    CertificateUploadRequest,
-    CertificateResponse,
-    CertificateMutationResponse,
     CertificateDryRunResult,
     CertificateListResponse,
+    CertificateMutationResponse,
+    CertificateRequestCreate,
+    CertificateResponse,
+    CertificateStatus,
+    CertificateType,
+    CertificateUploadRequest,
     SSLDiagnosticResult,
-    ACMEAccount
 )
 
 
@@ -29,9 +30,7 @@ class TestCertificateModel:
     def test_certificate_creation(self):
         """Test basic certificate creation."""
         cert = Certificate(
-            domain="example.com",
-            certificate_type=CertificateType.LETSENCRYPT,
-            status=CertificateStatus.VALID
+            domain="example.com", certificate_type=CertificateType.LETSENCRYPT, status=CertificateStatus.VALID
         )
         assert cert.domain == "example.com"
         assert cert.certificate_type == CertificateType.LETSENCRYPT
@@ -42,10 +41,7 @@ class TestCertificateModel:
     def test_certificate_with_expiry(self):
         """Test certificate with expiry date."""
         expiry = datetime.utcnow() + timedelta(days=30)
-        cert = Certificate(
-            domain="example.com",
-            not_after=expiry
-        )
+        cert = Certificate(domain="example.com", not_after=expiry)
         assert cert.days_until_expiry == 30 or cert.days_until_expiry == 29  # Allow for timing
         assert cert.is_expired is False
         assert cert.is_expiring_soon is True
@@ -53,28 +49,19 @@ class TestCertificateModel:
     def test_certificate_expired(self):
         """Test expired certificate."""
         expiry = datetime.utcnow() - timedelta(days=1)
-        cert = Certificate(
-            domain="example.com",
-            not_after=expiry
-        )
+        cert = Certificate(domain="example.com", not_after=expiry)
         assert cert.is_expired is True
         assert cert.days_until_expiry < 0
 
     def test_certificate_not_expiring_soon(self):
         """Test certificate not expiring soon."""
         expiry = datetime.utcnow() + timedelta(days=60)
-        cert = Certificate(
-            domain="example.com",
-            not_after=expiry
-        )
+        cert = Certificate(domain="example.com", not_after=expiry)
         assert cert.is_expiring_soon is False
 
     def test_certificate_alt_names(self):
         """Test certificate with alternative names."""
-        cert = Certificate(
-            domain="example.com",
-            alt_names=["www.example.com", "mail.example.com"]
-        )
+        cert = Certificate(domain="example.com", alt_names=["www.example.com", "mail.example.com"])
         assert len(cert.alt_names) == 2
         assert "www.example.com" in cert.alt_names
 
@@ -84,11 +71,7 @@ class TestCertificateRequestCreate:
 
     def test_valid_request(self):
         """Test valid certificate request."""
-        request = CertificateRequestCreate(
-            domain="example.com",
-            alt_names=["www.example.com"],
-            auto_renew=True
-        )
+        request = CertificateRequestCreate(domain="example.com", alt_names=["www.example.com"], auto_renew=True)
         assert request.domain == "example.com"
         assert len(request.alt_names) == 1
 
@@ -122,10 +105,7 @@ class TestCertificateRequestCreate:
 
     def test_alt_names_validation(self):
         """Test alt names are validated."""
-        request = CertificateRequestCreate(
-            domain="example.com",
-            alt_names=["WWW.EXAMPLE.COM", "  api.example.com  "]
-        )
+        request = CertificateRequestCreate(domain="example.com", alt_names=["WWW.EXAMPLE.COM", "  api.example.com  "])
         assert "www.example.com" in request.alt_names
         assert "api.example.com" in request.alt_names
 
@@ -148,9 +128,7 @@ PLACEHOLDER_CONTENT
     def test_valid_upload_request(self):
         """Test valid certificate upload request."""
         request = CertificateUploadRequest(
-            domain="example.com",
-            certificate_pem=self.VALID_CERT_PEM,
-            private_key_pem=self.VALID_KEY_PEM
+            domain="example.com", certificate_pem=self.VALID_CERT_PEM, private_key_pem=self.VALID_KEY_PEM
         )
         assert request.domain == "example.com"
 
@@ -160,9 +138,7 @@ PLACEHOLDER_CONTENT
         invalid_cert = "x" * 150  # Long enough but not PEM format
         with pytest.raises(ValidationError) as exc_info:
             CertificateUploadRequest(
-                domain="example.com",
-                certificate_pem=invalid_cert,
-                private_key_pem=self.VALID_KEY_PEM
+                domain="example.com", certificate_pem=invalid_cert, private_key_pem=self.VALID_KEY_PEM
             )
         assert "PEM format" in str(exc_info.value) or "CERTIFICATE" in str(exc_info.value)
 
@@ -172,9 +148,7 @@ PLACEHOLDER_CONTENT
         invalid_key = "x" * 150  # Long enough but not PEM format
         with pytest.raises(ValidationError) as exc_info:
             CertificateUploadRequest(
-                domain="example.com",
-                certificate_pem=self.VALID_CERT_PEM,
-                private_key_pem=invalid_key
+                domain="example.com", certificate_pem=self.VALID_CERT_PEM, private_key_pem=invalid_key
             )
         assert "PEM format" in str(exc_info.value) or "PRIVATE KEY" in str(exc_info.value)
 
@@ -185,9 +159,7 @@ MIIBOgIBAAJBANOH3jC7bMGd0njCLHPq8t7G
 PLACEHOLDER
 -----END RSA PRIVATE KEY-----"""
         request = CertificateUploadRequest(
-            domain="example.com",
-            certificate_pem=self.VALID_CERT_PEM,
-            private_key_pem=rsa_key
+            domain="example.com", certificate_pem=self.VALID_CERT_PEM, private_key_pem=rsa_key
         )
         assert "RSA PRIVATE KEY" in request.private_key_pem
 
@@ -198,9 +170,7 @@ MHQCAQEEIBg7RmJFLkGy0hLAPFfVJFwQ
 PLACEHOLDER
 -----END EC PRIVATE KEY-----"""
         request = CertificateUploadRequest(
-            domain="example.com",
-            certificate_pem=self.VALID_CERT_PEM,
-            private_key_pem=ec_key
+            domain="example.com", certificate_pem=self.VALID_CERT_PEM, private_key_pem=ec_key
         )
         assert "EC PRIVATE KEY" in request.private_key_pem
 
@@ -215,7 +185,7 @@ class TestCertificateResponse:
             certificate_type=CertificateType.LETSENCRYPT,
             status=CertificateStatus.VALID,
             issuer="Let's Encrypt",
-            not_after=datetime.utcnow() + timedelta(days=90)
+            not_after=datetime.utcnow() + timedelta(days=90),
         )
         response = CertificateResponse.from_certificate(cert)
         assert response.domain == "example.com"
@@ -227,11 +197,7 @@ class TestCertificateResponse:
         cert = Certificate(domain="example.com")
         suggestions = [{"action": "Test", "reason": "Test"}]
         warnings = [{"code": "test", "message": "Test"}]
-        response = CertificateResponse.from_certificate(
-            cert,
-            suggestions=suggestions,
-            warnings=warnings
-        )
+        response = CertificateResponse.from_certificate(cert, suggestions=suggestions, warnings=warnings)
         assert len(response.suggestions) == 1
         assert len(response.warnings) == 1
 
@@ -246,7 +212,7 @@ class TestCertificateDryRunResult:
             operation="request_certificate",
             message="Would succeed",
             domain_resolves=True,
-            port_80_accessible=True
+            port_80_accessible=True,
         )
         assert result.dry_run is True
         assert result.would_succeed is True
@@ -257,7 +223,7 @@ class TestCertificateDryRunResult:
             would_succeed=False,
             operation="request_certificate",
             message="Would fail",
-            warnings=[{"code": "dns_error", "message": "DNS not configured"}]
+            warnings=[{"code": "dns_error", "message": "DNS not configured"}],
         )
         assert result.would_succeed is False
         assert len(result.warnings) == 1
@@ -269,11 +235,7 @@ class TestCertificateListResponse:
     def test_list_response(self):
         """Test certificate list response."""
         response = CertificateListResponse(
-            certificates=[],
-            total=0,
-            valid_count=0,
-            expiring_soon_count=0,
-            expired_count=0
+            certificates=[], total=0, valid_count=0, expiring_soon_count=0, expired_count=0
         )
         assert response.total == 0
 
@@ -282,11 +244,7 @@ class TestCertificateListResponse:
         cert = Certificate(domain="example.com")
         cert_response = CertificateResponse.from_certificate(cert)
         response = CertificateListResponse(
-            certificates=[cert_response],
-            total=1,
-            valid_count=0,
-            expiring_soon_count=0,
-            expired_count=0
+            certificates=[cert_response], total=1, valid_count=0, expiring_soon_count=0, expired_count=0
         )
         assert response.total == 1
         assert len(response.certificates) == 1
@@ -303,7 +261,7 @@ class TestSSLDiagnosticResult:
             dns_ip_addresses=["1.2.3.4"],
             port_80_open=True,
             port_443_open=True,
-            ready_for_ssl=True
+            ready_for_ssl=True,
         )
         assert result.domain == "example.com"
         assert result.ready_for_ssl is True
@@ -311,10 +269,7 @@ class TestSSLDiagnosticResult:
     def test_diagnostic_with_issues(self):
         """Test diagnostic result with issues."""
         result = SSLDiagnosticResult(
-            domain="example.com",
-            dns_resolves=False,
-            issues=["Domain does not resolve"],
-            ready_for_ssl=False
+            domain="example.com", dns_resolves=False, issues=["Domain does not resolve"], ready_for_ssl=False
         )
         assert result.ready_for_ssl is False
         assert len(result.issues) == 1
@@ -328,7 +283,7 @@ class TestACMEAccount:
         account = ACMEAccount(
             email="admin@example.com",
             directory_url="https://acme-v02.api.letsencrypt.org/directory",
-            private_key_pem="-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----"
+            private_key_pem="-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----",
         )
         assert account.email == "admin@example.com"
         assert account.id.startswith("acme-")
@@ -345,7 +300,7 @@ class TestCertificateMutationResponse:
             domain="example.com",
             transaction_id="tx-123",
             reload_required=True,
-            reloaded=False
+            reloaded=False,
         )
         assert response.success is True
         assert response.transaction_id == "tx-123"
@@ -359,7 +314,7 @@ class TestCertificateMutationResponse:
             message="Certificate issued",
             domain="example.com",
             transaction_id="tx-123",
-            certificate=cert_response
+            certificate=cert_response,
         )
         assert response.certificate is not None
         assert response.certificate.domain == "example.com"

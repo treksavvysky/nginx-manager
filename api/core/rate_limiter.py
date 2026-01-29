@@ -6,6 +6,7 @@ with differentiated limits for read vs mutation operations.
 """
 
 import logging
+
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
@@ -13,10 +14,10 @@ from starlette.requests import Request
 logger = logging.getLogger(__name__)
 
 # Default rate limits
-DEFAULT_RATE_AUTH = "60/minute"      # Authenticated requests
-DEFAULT_RATE_UNAUTH = "10/minute"    # Unauthenticated requests
+DEFAULT_RATE_AUTH = "60/minute"  # Authenticated requests
+DEFAULT_RATE_UNAUTH = "10/minute"  # Unauthenticated requests
 DEFAULT_RATE_MUTATION = "30/minute"  # Create/update/delete operations
-DEFAULT_RATE_READ = "120/minute"     # Read-only operations
+DEFAULT_RATE_READ = "120/minute"  # Read-only operations
 
 
 def _get_client_key(request: Request) -> str:

@@ -7,21 +7,19 @@ recent activity and monitoring system health.
 
 import logging
 from datetime import datetime
-from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.auth_dependency import get_current_auth, require_role
+from core.auth_dependency import require_role
+from core.event_store import get_event_store
 from models.auth import AuthContext, Role
-
 from models.event import (
     Event,
-    EventSeverity,
-    EventFilters,
-    EventsListResponse,
     EventCountBySeverity,
+    EventFilters,
+    EventSeverity,
+    EventsListResponse,
 )
-from core.event_store import get_event_store
 
 logger = logging.getLogger(__name__)
 
@@ -51,37 +49,18 @@ Retrieve recent system events with optional filtering.
 **Pagination:**
 - Default 50 events per page
 - Use `page` parameter to navigate
-"""
+""",
 )
 async def list_events(
-    since: Optional[datetime] = Query(
-        None,
-        description="Return events after this timestamp"
+    since: datetime | None = Query(None, description="Return events after this timestamp"),
+    until: datetime | None = Query(None, description="Return events before this timestamp"),
+    severity: list[EventSeverity] | None = Query(None, description="Filter by severity levels"),
+    category: list[str] | None = Query(
+        None, description="Filter by categories (transaction, health, ssl, system, config)"
     ),
-    until: Optional[datetime] = Query(
-        None,
-        description="Return events before this timestamp"
-    ),
-    severity: Optional[List[EventSeverity]] = Query(
-        None,
-        description="Filter by severity levels"
-    ),
-    category: Optional[List[str]] = Query(
-        None,
-        description="Filter by categories (transaction, health, ssl, system, config)"
-    ),
-    resource_type: Optional[str] = Query(
-        None,
-        description="Filter by resource type"
-    ),
-    resource_id: Optional[str] = Query(
-        None,
-        description="Filter by resource ID"
-    ),
-    transaction_id: Optional[str] = Query(
-        None,
-        description="Filter by transaction ID"
-    ),
+    resource_type: str | None = Query(None, description="Filter by resource type"),
+    resource_id: str | None = Query(None, description="Filter by resource ID"),
+    transaction_id: str | None = Query(None, description="Filter by transaction ID"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=200, description="Events per page"),
     auth: AuthContext = Depends(require_role(Role.VIEWER)),
@@ -96,14 +75,10 @@ async def list_events(
         category=category,
         resource_type=resource_type,
         resource_id=resource_id,
-        transaction_id=transaction_id
+        transaction_id=transaction_id,
     )
 
-    return await event_store.list_events(
-        filters=filters,
-        page=page,
-        page_size=page_size
-    )
+    return await event_store.list_events(filters=filters, page=page, page_size=page_size)
 
 
 @router.get(
@@ -115,13 +90,10 @@ Get counts of events grouped by severity level.
 
 Useful for monitoring dashboards and health indicators.
 Optionally filter to events since a specific timestamp.
-"""
+""",
 )
 async def get_event_counts(
-    since: Optional[datetime] = Query(
-        None,
-        description="Only count events after this timestamp"
-    ),
+    since: datetime | None = Query(None, description="Only count events after this timestamp"),
     auth: AuthContext = Depends(require_role(Role.VIEWER)),
 ) -> EventCountBySeverity:
     """Get event counts by severity."""
@@ -138,7 +110,7 @@ Retrieve full details for a specific event.
 
 Returns complete event information including all metadata
 and the `details` field with structured context.
-"""
+""",
 )
 async def get_event(event_id: str, auth: AuthContext = Depends(require_role(Role.VIEWER))) -> Event:
     """Get a specific event by ID."""
@@ -151,8 +123,8 @@ async def get_event(event_id: str, auth: AuthContext = Depends(require_role(Role
             detail={
                 "error": "event_not_found",
                 "message": f"Event '{event_id}' not found",
-                "suggestion": "Check the event ID and try again"
-            }
+                "suggestion": "Check the event ID and try again",
+            },
         )
 
     return event

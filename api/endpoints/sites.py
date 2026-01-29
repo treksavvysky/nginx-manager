@@ -5,39 +5,39 @@ REST API endpoints for managing NGINX server block configurations.
 Supports full CRUD operations with transaction support for rollback.
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends
-from fastapi.responses import JSONResponse
-from pathlib import Path
-from typing import List, Optional, Union
 import logging
 import shutil
 import tempfile
+from pathlib import Path
+from typing import Union
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from config import get_nginx_conf_path, settings
-from core.auth_dependency import get_current_auth, require_role
-from models.auth import AuthContext, Role
-from core.config_manager import nginx_parser, ConfigAdapter
-from core.config_generator import get_config_generator, ConfigGeneratorError
-from core.docker_service import docker_service, DockerServiceError
-from core.transaction_context import transactional_operation
+from core.auth_dependency import require_role
+from core.config_generator import ConfigGeneratorError, get_config_generator
+from core.config_manager import ConfigAdapter, nginx_parser
 from core.context_helpers import (
-    get_site_create_suggestions,
-    get_site_update_suggestions,
-    get_site_delete_suggestions,
-    get_site_enable_suggestions,
-    get_site_disable_suggestions,
     get_config_warnings,
+    get_site_create_suggestions,
+    get_site_delete_suggestions,
+    get_site_disable_suggestions,
+    get_site_enable_suggestions,
+    get_site_update_suggestions,
 )
+from core.docker_service import DockerServiceError, docker_service
+from core.transaction_context import transactional_operation
+from models.auth import AuthContext, Role
 from models.config import SiteConfigResponse
 from models.site_requests import (
+    DryRunDiff,
+    DryRunResult,
     SiteCreateRequest,
-    SiteUpdateRequest,
+    SiteDeleteResponse,
     SiteEnableDisableRequest,
     SiteMutationResponse,
-    SiteDeleteResponse,
     SiteType,
-    DryRunResult,
-    DryRunDiff,
+    SiteUpdateRequest,
     ValidationWarning,
 )
 from models.transaction import OperationType
@@ -49,22 +49,22 @@ router = APIRouter(prefix="/sites", tags=["Site Configuration"])
 
 @router.get(
     "/",
-    response_model=List[SiteConfigResponse],
+    response_model=list[SiteConfigResponse],
     summary="List All Site Configurations",
     description="""
     Retrieve all NGINX server block configurations from the conf.d directory.
-    
+
     This endpoint scans the NGINX configuration directory and parses each .conf file
     to extract key information about server blocks. Perfect for AI agents to get
     an overview of all configured sites.
-    
+
     **What gets parsed:**
     - Server names (domains)
     - Listen ports
     - SSL status
     - Root paths or proxy destinations
     - File metadata (size, timestamps)
-    
+
     **Safe Operation**: This is a read-only operation that doesn't modify any configurations.
     """,
     responses={
@@ -84,42 +84,39 @@ router = APIRouter(prefix="/sites", tags=["Site Configuration"])
                             "file_path": "/etc/nginx/conf.d/example.com.conf",
                             "file_size": 1024,
                             "created_at": "2024-01-15T10:30:00",
-                            "updated_at": "2024-01-20T14:45:00"
+                            "updated_at": "2024-01-20T14:45:00",
                         }
                     ]
                 }
-            }
+            },
         },
         404: {"description": "NGINX configuration directory not found"},
-        500: {"description": "Internal server error during configuration parsing"}
-    }
+        500: {"description": "Internal server error during configuration parsing"},
+    },
 )
 async def list_sites(
     auth: AuthContext = Depends(require_role(Role.VIEWER)),
-) -> List[SiteConfigResponse]:
+) -> list[SiteConfigResponse]:
     """
     List all NGINX site configurations.
-    
+
     Scans the NGINX conf.d directory and parses all .conf files to extract
     server block information. Returns detailed metadata about each configured site.
-    
+
     Returns:
         List[SiteConfigResponse]: List of parsed site configurations
-        
+
     Raises:
         HTTPException: If conf.d directory is not accessible or parsing fails
     """
     try:
         conf_dir = get_nginx_conf_path()
-        
+
         # Check if configuration directory exists
         if not conf_dir.exists():
             logger.warning(f"NGINX conf directory not found: {conf_dir}")
-            raise HTTPException(
-                status_code=404,
-                detail=f"NGINX configuration directory not found: {conf_dir}"
-            )
-        
+            raise HTTPException(status_code=404, detail=f"NGINX configuration directory not found: {conf_dir}")
+
         # Find all .conf and .conf.disabled files
         conf_files = list(conf_dir.glob("*.conf"))
         disabled_files = list(conf_dir.glob("*.conf.disabled"))
@@ -128,7 +125,7 @@ async def list_sites(
         if not all_files:
             logger.info(f"No .conf files found in {conf_dir}")
             return []
-        
+
         sites = []
         for conf_file in all_files:
             try:
@@ -149,6 +146,7 @@ async def list_sites(
         # Enrich with certificate data
         try:
             from core.cert_helpers import get_certificate_map, match_certificate
+
             cert_map = await get_certificate_map()
             for site in sites:
                 if site.server_names:
@@ -158,16 +156,13 @@ async def list_sites(
 
         logger.info(f"Successfully parsed {len(sites)} site configurations")
         return sites
-        
+
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
         logger.error(f"Unexpected error listing sites: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error while listing sites: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Internal server error while listing sites: {e!s}")
 
 
 @router.get(
@@ -176,21 +171,21 @@ async def list_sites(
     summary="Get Specific Site Configuration",
     description="""
     Retrieve detailed configuration for a specific NGINX site by name.
-    
+
     This endpoint fetches and parses a single NGINX configuration file,
     providing detailed information about the server block configuration.
     Perfect for AI agents that need to examine or modify specific sites.
-    
+
     **Parameters:**
     - `site_name`: The name of the site configuration (filename without .conf extension)
-    
+
     **What you get:**
     - Complete server block details
     - SSL configuration status
     - Proxy or static file serving setup
     - File metadata and timestamps
     - Configuration validation status
-    
+
     **Use Cases:**
     - Before modifying a site configuration
     - Checking SSL certificate status
@@ -215,14 +210,14 @@ async def list_sites(
                         "file_size": 856,
                         "created_at": "2024-01-15T10:30:00",
                         "updated_at": "2024-01-20T14:45:00",
-                        "last_validated": None
+                        "last_validated": None,
                     }
                 }
-            }
+            },
         },
         404: {"description": "Site configuration not found"},
-        500: {"description": "Error parsing configuration file"}
-    }
+        500: {"description": "Error parsing configuration file"},
+    },
 )
 async def get_site(
     site_name: str,
@@ -230,37 +225,31 @@ async def get_site(
 ) -> SiteConfigResponse:
     """
     Get detailed configuration for a specific site.
-    
+
     Args:
         site_name: Name of the site (without .conf extension)
-        
+
     Returns:
         SiteConfigResponse: Detailed site configuration
-        
+
     Raises:
         HTTPException: If site not found or parsing fails
     """
     try:
         conf_dir = get_nginx_conf_path()
         conf_file = conf_dir / f"{site_name}.conf"
-        
+
         # Check if the specific config file exists
         if not conf_file.exists():
             logger.warning(f"Site configuration not found: {conf_file}")
-            raise HTTPException(
-                status_code=404,
-                detail=f"Site configuration '{site_name}' not found"
-            )
-        
+            raise HTTPException(status_code=404, detail=f"Site configuration '{site_name}' not found")
+
         # Parse the configuration file
         parsed_config = nginx_parser.parse_config_file(conf_file)
-        
+
         if not parsed_config:
             logger.error(f"Failed to parse configuration file: {conf_file}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to parse configuration file for site '{site_name}'"
-            )
+            raise HTTPException(status_code=500, detail=f"Failed to parse configuration file for site '{site_name}'")
 
         # Convert to response model via adapter
         rich_dict = ConfigAdapter.to_rich_dict(parsed_config)
@@ -269,6 +258,7 @@ async def get_site(
         # Enrich with certificate data
         try:
             from core.cert_helpers import get_certificate_map, match_certificate
+
             cert_map = await get_certificate_map()
             if site_response.server_names:
                 site_response.certificate = match_certificate(site_response.server_names, cert_map)
@@ -277,16 +267,13 @@ async def get_site(
 
         logger.info(f"Successfully retrieved configuration for site: {site_name}")
         return site_response
-        
+
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
         logger.error(f"Unexpected error getting site {site_name}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error while retrieving site '{site_name}': {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Internal server error while retrieving site '{site_name}': {e!s}")
 
 
 @router.post(
@@ -321,14 +308,14 @@ async def get_site(
         201: {"description": "Site created successfully"},
         400: {"description": "Invalid configuration or validation failed"},
         409: {"description": "Site with this name already exists"},
-        500: {"description": "Internal server error during creation"}
-    }
+        500: {"description": "Internal server error during creation"},
+    },
 )
 async def create_site(
     request: SiteCreateRequest,
     dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
     auth: AuthContext = Depends(require_role(Role.OPERATOR)),
-) -> Union[SiteMutationResponse, DryRunResult]:
+) -> SiteMutationResponse | DryRunResult:
     """
     Create a new NGINX site configuration.
 
@@ -353,12 +340,9 @@ async def create_site(
                 operation="create",
                 message=f"Site '{request.name}' already exists",
                 validation_passed=False,
-                affected_sites=[request.name]
+                affected_sites=[request.name],
             )
-        raise HTTPException(
-            status_code=409,
-            detail=f"Site '{request.name}' already exists"
-        )
+        raise HTTPException(status_code=409, detail=f"Site '{request.name}' already exists")
 
     # Also check for disabled version
     disabled_file = conf_dir / f"{request.name}.conf.disabled"
@@ -369,11 +353,10 @@ async def create_site(
                 operation="create",
                 message=f"Site '{request.name}' exists but is disabled. Enable it or delete it first.",
                 validation_passed=False,
-                affected_sites=[request.name]
+                affected_sites=[request.name],
             )
         raise HTTPException(
-            status_code=409,
-            detail=f"Site '{request.name}' exists but is disabled. Enable it or delete it first."
+            status_code=409, detail=f"Site '{request.name}' exists but is disabled. Enable it or delete it first."
         )
 
     # Generate configuration
@@ -387,25 +370,18 @@ async def create_site(
                 operation="create",
                 message=f"Failed to generate configuration: {e.message}",
                 validation_passed=False,
-                affected_sites=[request.name]
+                affected_sites=[request.name],
             )
-        raise HTTPException(
-            status_code=400,
-            detail=f"Failed to generate configuration: {e.message}"
-        )
+        raise HTTPException(status_code=400, detail=f"Failed to generate configuration: {e.message}")
 
     # Validate configuration
     validation_passed = True
     validation_output = None
-    warnings: List[ValidationWarning] = []
+    warnings: list[ValidationWarning] = []
 
     if settings.validate_before_deploy:
         # Write to temp file and validate
-        with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.conf',
-            delete=False
-        ) as tmp_file:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as tmp_file:
             tmp_file.write(config_content)
             tmp_path = Path(tmp_file.name)
 
@@ -426,15 +402,17 @@ async def create_site(
 
     # Generate warnings
     if request.site_type == SiteType.STATIC and not request.root_path:
-        warnings.append(ValidationWarning(
-            code="missing_root",
-            message="Static site without root_path specified",
-            suggestion="Set root_path to the document root directory"
-        ))
+        warnings.append(
+            ValidationWarning(
+                code="missing_root",
+                message="Static site without root_path specified",
+                suggestion="Set root_path to the document root directory",
+            )
+        )
 
     # If dry_run, return preview result
     if dry_run:
-        lines = config_content.count('\n') + 1
+        lines = config_content.count("\n") + 1
         return DryRunResult(
             would_succeed=validation_passed,
             operation="create",
@@ -448,24 +426,19 @@ async def create_site(
                 current_content=None,
                 new_content=config_content,
                 lines_added=lines,
-                lines_removed=0
+                lines_removed=0,
             ),
             affected_sites=[request.name],
             reload_required=True,
-            generated_config=config_content
+            generated_config=config_content,
         )
 
     # Actual creation (not dry run)
     if not validation_passed:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Configuration validation failed: {validation_output}"
-        )
+        raise HTTPException(status_code=400, detail=f"Configuration validation failed: {validation_output}")
 
     async with transactional_operation(
-        operation=OperationType.SITE_CREATE,
-        resource_type="site",
-        resource_id=request.name
+        operation=OperationType.SITE_CREATE, resource_type="site", resource_id=request.name
     ) as ctx:
         try:
             # Write the config (already validated above)
@@ -484,17 +457,14 @@ async def create_site(
 
             # Generate suggestions and warnings
             suggestions = get_site_create_suggestions(
-                site_name=request.name,
-                site_type=request.site_type.value,
-                reloaded=reloaded,
-                enabled=True
+                site_name=request.name, site_type=request.site_type.value, reloaded=reloaded, enabled=True
             )
             config_warnings = get_config_warnings(
                 ssl_enabled=False,
                 has_ssl_cert=False,
                 listen_ports=[request.listen_port],
                 proxy_pass=request.proxy_pass,
-                root_path=request.root_path
+                root_path=request.root_path,
             )
 
             return SiteMutationResponse(
@@ -507,17 +477,14 @@ async def create_site(
                 reloaded=reloaded,
                 enabled=True,
                 suggestions=suggestions,
-                warnings=config_warnings
+                warnings=config_warnings,
             )
 
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Unexpected error creating site: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Internal server error while creating site: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Internal server error while creating site: {e!s}")
 
 
 @router.put(
@@ -544,15 +511,15 @@ async def create_site(
         200: {"description": "Site updated successfully (or dry run result)"},
         400: {"description": "Invalid configuration or validation failed"},
         404: {"description": "Site not found"},
-        500: {"description": "Internal server error during update"}
-    }
+        500: {"description": "Internal server error during update"},
+    },
 )
 async def update_site(
     site_name: str,
     request: SiteUpdateRequest,
     dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
     auth: AuthContext = Depends(require_role(Role.OPERATOR)),
-) -> Union[SiteMutationResponse, DryRunResult]:
+) -> SiteMutationResponse | DryRunResult:
     """
     Update an existing site configuration.
 
@@ -577,24 +544,18 @@ async def update_site(
                     operation="update",
                     message=f"Site '{site_name}' is disabled. Enable it before updating.",
                     validation_passed=False,
-                    affected_sites=[site_name]
+                    affected_sites=[site_name],
                 )
-            raise HTTPException(
-                status_code=400,
-                detail=f"Site '{site_name}' is disabled. Enable it before updating."
-            )
+            raise HTTPException(status_code=400, detail=f"Site '{site_name}' is disabled. Enable it before updating.")
         if dry_run:
             return DryRunResult(
                 would_succeed=False,
                 operation="update",
                 message=f"Site '{site_name}' not found",
                 validation_passed=False,
-                affected_sites=[site_name]
+                affected_sites=[site_name],
             )
-        raise HTTPException(
-            status_code=404,
-            detail=f"Site '{site_name}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Site '{site_name}' not found")
 
     # Parse existing configuration to get current values
     parsed_config = nginx_parser.parse_config_file(conf_file)
@@ -605,12 +566,9 @@ async def update_site(
                 operation="update",
                 message=f"Failed to parse existing configuration for '{site_name}'",
                 validation_passed=False,
-                affected_sites=[site_name]
+                affected_sites=[site_name],
             )
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to parse existing configuration for '{site_name}'"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to parse existing configuration for '{site_name}'")
 
     # Get current content for diff
     current_content = conf_file.read_text()
@@ -636,7 +594,7 @@ async def update_site(
         listen_port=listen_port,
         root_path=request.root_path or existing.get("root_path"),
         proxy_pass=request.proxy_pass or existing.get("proxy_pass"),
-        auto_reload=request.auto_reload
+        auto_reload=request.auto_reload,
     )
 
     # Generate new configuration
@@ -649,7 +607,7 @@ async def update_site(
 
     if settings.validate_before_deploy:
         # Backup and write for validation
-        backup_path = conf_file.with_suffix('.conf.bak')
+        backup_path = conf_file.with_suffix(".conf.bak")
         shutil.copy(conf_file, backup_path)
         try:
             conf_file.write_text(config_content)
@@ -663,8 +621,8 @@ async def update_site(
             backup_path.unlink(missing_ok=True)
 
     # Calculate diff
-    current_lines = current_content.count('\n') + 1
-    new_lines = config_content.count('\n') + 1
+    current_lines = current_content.count("\n") + 1
+    new_lines = config_content.count("\n") + 1
 
     # If dry_run, return preview result
     if dry_run:
@@ -681,24 +639,19 @@ async def update_site(
                 current_content=current_content,
                 new_content=config_content,
                 lines_added=max(0, new_lines - current_lines),
-                lines_removed=max(0, current_lines - new_lines)
+                lines_removed=max(0, current_lines - new_lines),
             ),
             affected_sites=[site_name],
             reload_required=True,
-            generated_config=config_content
+            generated_config=config_content,
         )
 
     # Actual update
     if not validation_passed:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Configuration validation failed: {validation_output}"
-        )
+        raise HTTPException(status_code=400, detail=f"Configuration validation failed: {validation_output}")
 
     async with transactional_operation(
-        operation=OperationType.SITE_UPDATE,
-        resource_type="site",
-        resource_id=site_name
+        operation=OperationType.SITE_UPDATE, resource_type="site", resource_id=site_name
     ) as ctx:
         try:
             # Write the new config
@@ -718,14 +671,14 @@ async def update_site(
             suggestions = get_site_update_suggestions(
                 site_name=site_name,
                 reloaded=reloaded,
-                changes_made=[]  # Could track specific changes
+                changes_made=[],  # Could track specific changes
             )
             config_warnings = get_config_warnings(
                 ssl_enabled=False,
                 has_ssl_cert=False,
                 listen_ports=[create_request.listen_port],
                 proxy_pass=create_request.proxy_pass,
-                root_path=create_request.root_path
+                root_path=create_request.root_path,
             )
 
             return SiteMutationResponse(
@@ -738,17 +691,14 @@ async def update_site(
                 reloaded=reloaded,
                 enabled=True,
                 suggestions=suggestions,
-                warnings=config_warnings
+                warnings=config_warnings,
             )
 
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Unexpected error updating site: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Internal server error while updating site: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Internal server error while updating site: {e!s}")
 
 
 @router.delete(
@@ -773,15 +723,15 @@ async def update_site(
     responses={
         200: {"description": "Site deleted successfully (or dry run result)"},
         404: {"description": "Site not found"},
-        500: {"description": "Internal server error during deletion"}
-    }
+        500: {"description": "Internal server error during deletion"},
+    },
 )
 async def delete_site(
     site_name: str,
     auto_reload: bool = Query(default=False, description="Reload NGINX after deletion"),
     dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
     auth: AuthContext = Depends(require_role(Role.OPERATOR)),
-) -> Union[SiteDeleteResponse, DryRunResult]:
+) -> SiteDeleteResponse | DryRunResult:
     """
     Delete a site configuration.
 
@@ -814,17 +764,14 @@ async def delete_site(
                 operation="delete",
                 message=f"Site '{site_name}' not found",
                 validation_passed=False,
-                affected_sites=[site_name]
+                affected_sites=[site_name],
             )
-        raise HTTPException(
-            status_code=404,
-            detail=f"Site '{site_name}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Site '{site_name}' not found")
 
     # If dry_run, return preview result
     if dry_run:
         current_content = target_file.read_text()
-        lines = current_content.count('\n') + 1
+        lines = current_content.count("\n") + 1
         return DryRunResult(
             would_succeed=True,
             operation="delete",
@@ -837,16 +784,14 @@ async def delete_site(
                 current_content=current_content,
                 new_content=None,
                 lines_added=0,
-                lines_removed=lines
+                lines_removed=lines,
             ),
             affected_sites=[site_name],
-            reload_required=was_enabled
+            reload_required=was_enabled,
         )
 
     async with transactional_operation(
-        operation=OperationType.SITE_DELETE,
-        resource_type="site",
-        resource_id=site_name
+        operation=OperationType.SITE_DELETE, resource_type="site", resource_id=site_name
     ) as ctx:
         try:
             # Remove the file
@@ -863,11 +808,7 @@ async def delete_site(
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
             # Generate suggestions
-            suggestions = get_site_delete_suggestions(
-                site_name=site_name,
-                reloaded=reloaded,
-                was_enabled=was_enabled
-            )
+            suggestions = get_site_delete_suggestions(site_name=site_name, reloaded=reloaded, was_enabled=was_enabled)
 
             return SiteDeleteResponse(
                 success=True,
@@ -877,17 +818,14 @@ async def delete_site(
                 file_path=str(target_file),
                 reload_required=was_enabled and not reloaded,
                 reloaded=reloaded,
-                suggestions=suggestions
+                suggestions=suggestions,
             )
 
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Unexpected error deleting site: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Internal server error while deleting site: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Internal server error while deleting site: {e!s}")
 
 
 @router.post(
@@ -910,15 +848,15 @@ async def delete_site(
         200: {"description": "Site enabled successfully (or dry run result)"},
         400: {"description": "Site is already enabled"},
         404: {"description": "Site not found"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def enable_site(
     site_name: str,
     request: SiteEnableDisableRequest = None,
     dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
     auth: AuthContext = Depends(require_role(Role.OPERATOR)),
-) -> Union[SiteMutationResponse, DryRunResult]:
+) -> SiteMutationResponse | DryRunResult:
     """
     Enable a disabled site.
 
@@ -944,12 +882,9 @@ async def enable_site(
                 operation="enable",
                 message=f"Site '{site_name}' is already enabled",
                 validation_passed=False,
-                affected_sites=[site_name]
+                affected_sites=[site_name],
             )
-        raise HTTPException(
-            status_code=400,
-            detail=f"Site '{site_name}' is already enabled"
-        )
+        raise HTTPException(status_code=400, detail=f"Site '{site_name}' is already enabled")
 
     if not disabled_file.exists():
         if dry_run:
@@ -958,12 +893,9 @@ async def enable_site(
                 operation="enable",
                 message=f"Site '{site_name}' not found",
                 validation_passed=False,
-                affected_sites=[site_name]
+                affected_sites=[site_name],
             )
-        raise HTTPException(
-            status_code=404,
-            detail=f"Site '{site_name}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Site '{site_name}' not found")
 
     # If dry_run, validate config and return preview result
     if dry_run:
@@ -995,17 +927,15 @@ async def enable_site(
                 current_content=None,
                 new_content=current_content,
                 lines_added=0,
-                lines_removed=0
+                lines_removed=0,
             ),
             affected_sites=[site_name],
             reload_required=True,
-            generated_config=current_content
+            generated_config=current_content,
         )
 
     async with transactional_operation(
-        operation=OperationType.SITE_UPDATE,
-        resource_type="site",
-        resource_id=site_name
+        operation=OperationType.SITE_UPDATE, resource_type="site", resource_id=site_name
     ) as ctx:
         try:
             # Rename disabled file to enabled
@@ -1018,10 +948,7 @@ async def enable_site(
                 if not success:
                     # Revert the rename
                     conf_file.rename(disabled_file)
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Configuration validation failed: {stderr}"
-                    )
+                    raise HTTPException(status_code=400, detail=f"Configuration validation failed: {stderr}")
 
             # Optionally reload NGINX
             reloaded = False
@@ -1033,10 +960,7 @@ async def enable_site(
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
             # Generate suggestions
-            suggestions = get_site_enable_suggestions(
-                site_name=site_name,
-                reloaded=reloaded
-            )
+            suggestions = get_site_enable_suggestions(site_name=site_name, reloaded=reloaded)
 
             return SiteMutationResponse(
                 success=True,
@@ -1047,17 +971,14 @@ async def enable_site(
                 reload_required=not reloaded,
                 reloaded=reloaded,
                 enabled=True,
-                suggestions=suggestions
+                suggestions=suggestions,
             )
 
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Unexpected error enabling site: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Internal server error while enabling site: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Internal server error while enabling site: {e!s}")
 
 
 @router.post(
@@ -1080,15 +1001,15 @@ async def enable_site(
         200: {"description": "Site disabled successfully (or dry run result)"},
         400: {"description": "Site is already disabled"},
         404: {"description": "Site not found"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def disable_site(
     site_name: str,
     request: SiteEnableDisableRequest = None,
     dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
     auth: AuthContext = Depends(require_role(Role.OPERATOR)),
-) -> Union[SiteMutationResponse, DryRunResult]:
+) -> SiteMutationResponse | DryRunResult:
     """
     Disable a site without deleting its configuration.
 
@@ -1114,12 +1035,9 @@ async def disable_site(
                 operation="disable",
                 message=f"Site '{site_name}' is already disabled",
                 validation_passed=False,
-                affected_sites=[site_name]
+                affected_sites=[site_name],
             )
-        raise HTTPException(
-            status_code=400,
-            detail=f"Site '{site_name}' is already disabled"
-        )
+        raise HTTPException(status_code=400, detail=f"Site '{site_name}' is already disabled")
 
     if not conf_file.exists():
         if dry_run:
@@ -1128,12 +1046,9 @@ async def disable_site(
                 operation="disable",
                 message=f"Site '{site_name}' not found",
                 validation_passed=False,
-                affected_sites=[site_name]
+                affected_sites=[site_name],
             )
-        raise HTTPException(
-            status_code=404,
-            detail=f"Site '{site_name}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Site '{site_name}' not found")
 
     # If dry_run, return preview result
     if dry_run:
@@ -1150,16 +1065,14 @@ async def disable_site(
                 current_content=current_content,
                 new_content=None,
                 lines_added=0,
-                lines_removed=0
+                lines_removed=0,
             ),
             affected_sites=[site_name],
-            reload_required=True
+            reload_required=True,
         )
 
     async with transactional_operation(
-        operation=OperationType.SITE_UPDATE,
-        resource_type="site",
-        resource_id=site_name
+        operation=OperationType.SITE_UPDATE, resource_type="site", resource_id=site_name
     ) as ctx:
         try:
             # Rename enabled file to disabled
@@ -1176,10 +1089,7 @@ async def disable_site(
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
             # Generate suggestions
-            suggestions = get_site_disable_suggestions(
-                site_name=site_name,
-                reloaded=reloaded
-            )
+            suggestions = get_site_disable_suggestions(site_name=site_name, reloaded=reloaded)
 
             return SiteMutationResponse(
                 success=True,
@@ -1190,14 +1100,11 @@ async def disable_site(
                 reload_required=not reloaded,
                 reloaded=reloaded,
                 enabled=False,
-                suggestions=suggestions
+                suggestions=suggestions,
             )
 
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Unexpected error disabling site: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Internal server error while disabling site: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Internal server error while disabling site: {e!s}")

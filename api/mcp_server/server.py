@@ -9,23 +9,23 @@ Supports multiple transports:
 - streamable-http: For remote connections (requires authentication in production)
 """
 
-import asyncio
-import logging
 import json
-from typing import Any, Optional
+import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # Try to import MCP SDK - provide helpful error if not installed
 try:
     from mcp.server.fastmcp import FastMCP
+
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
     logger.warning("MCP SDK not installed. Run: pip install 'mcp[cli]'")
 
 
-def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
+def create_mcp_server(name: str = "nginx-manager") -> Any | None:
     """
     Create and configure the MCP server with all resources, tools, and prompts.
 
@@ -50,6 +50,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
     async def resource_sites() -> str:
         """List all NGINX site configurations."""
         from mcp_server.resources import get_sites_resource
+
         result = await get_sites_resource()
         return json.dumps(result, indent=2, default=str)
 
@@ -57,6 +58,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
     async def resource_site(name: str) -> str:
         """Get detailed configuration for a specific site."""
         from mcp_server.resources import get_site_resource
+
         result = await get_site_resource(name)
         return json.dumps(result, indent=2, default=str)
 
@@ -64,6 +66,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
     async def resource_certificates() -> str:
         """List all SSL certificates with status."""
         from mcp_server.resources import get_certificates_resource
+
         result = await get_certificates_resource()
         return json.dumps(result, indent=2, default=str)
 
@@ -71,6 +74,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
     async def resource_certificate(domain: str) -> str:
         """Get detailed certificate information for a domain."""
         from mcp_server.resources import get_certificate_resource
+
         result = await get_certificate_resource(domain)
         return json.dumps(result, indent=2, default=str)
 
@@ -78,6 +82,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
     async def resource_health() -> str:
         """Get system health and status summary."""
         from mcp_server.resources import get_health_resource
+
         result = await get_health_resource()
         return json.dumps(result, indent=2, default=str)
 
@@ -85,6 +90,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
     async def resource_events() -> str:
         """Get recent system events (last 24 hours)."""
         from mcp_server.resources import get_events_resource
+
         result = await get_events_resource()
         return json.dumps(result, indent=2, default=str)
 
@@ -92,6 +98,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
     async def resource_transactions() -> str:
         """Get recent transactions with rollback capability."""
         from mcp_server.resources import get_transactions_resource
+
         result = await get_transactions_resource()
         return json.dumps(result, indent=2, default=str)
 
@@ -99,6 +106,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
     async def resource_transaction(transaction_id: str) -> str:
         """Get detailed transaction information with diff."""
         from mcp_server.resources import get_transaction_resource
+
         result = await get_transaction_resource(transaction_id)
         return json.dumps(result, indent=2, default=str)
 
@@ -115,7 +123,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
         root_path: str = None,
         proxy_pass: str = None,
         auto_reload: bool = True,
-        dry_run: bool = False
+        dry_run: bool = False,
     ) -> str:
         """
         Create a new NGINX site configuration.
@@ -134,6 +142,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Operation result with transaction_id and suggestions
         """
         from mcp_server.tools import create_site as create_site_impl
+
         result = await create_site_impl(
             name=name,
             server_names=server_names,
@@ -142,7 +151,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             root_path=root_path,
             proxy_pass=proxy_pass,
             auto_reload=auto_reload,
-            dry_run=dry_run
+            dry_run=dry_run,
         )
         return json.dumps(result, indent=2, default=str)
 
@@ -154,7 +163,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
         root_path: str = None,
         proxy_pass: str = None,
         auto_reload: bool = True,
-        dry_run: bool = False
+        dry_run: bool = False,
     ) -> str:
         """
         Update an existing site configuration.
@@ -172,6 +181,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Operation result with transaction_id and suggestions
         """
         from mcp_server.tools import update_site as update_site_impl
+
         result = await update_site_impl(
             name=name,
             server_names=server_names,
@@ -179,16 +189,12 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             root_path=root_path,
             proxy_pass=proxy_pass,
             auto_reload=auto_reload,
-            dry_run=dry_run
+            dry_run=dry_run,
         )
         return json.dumps(result, indent=2, default=str)
 
     @mcp.tool()
-    async def delete_site(
-        name: str,
-        auto_reload: bool = False,
-        dry_run: bool = False
-    ) -> str:
+    async def delete_site(name: str, auto_reload: bool = False, dry_run: bool = False) -> str:
         """
         Delete a site configuration.
 
@@ -201,19 +207,12 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Operation result with transaction_id
         """
         from mcp_server.tools import delete_site as delete_site_impl
-        result = await delete_site_impl(
-            name=name,
-            auto_reload=auto_reload,
-            dry_run=dry_run
-        )
+
+        result = await delete_site_impl(name=name, auto_reload=auto_reload, dry_run=dry_run)
         return json.dumps(result, indent=2, default=str)
 
     @mcp.tool()
-    async def enable_site(
-        name: str,
-        auto_reload: bool = True,
-        dry_run: bool = False
-    ) -> str:
+    async def enable_site(name: str, auto_reload: bool = True, dry_run: bool = False) -> str:
         """
         Enable a disabled site.
 
@@ -226,19 +225,12 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Operation result with transaction_id
         """
         from mcp_server.tools import enable_site as enable_site_impl
-        result = await enable_site_impl(
-            name=name,
-            auto_reload=auto_reload,
-            dry_run=dry_run
-        )
+
+        result = await enable_site_impl(name=name, auto_reload=auto_reload, dry_run=dry_run)
         return json.dumps(result, indent=2, default=str)
 
     @mcp.tool()
-    async def disable_site(
-        name: str,
-        auto_reload: bool = True,
-        dry_run: bool = False
-    ) -> str:
+    async def disable_site(name: str, auto_reload: bool = True, dry_run: bool = False) -> str:
         """
         Disable a site without deleting it.
 
@@ -251,11 +243,8 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Operation result with transaction_id
         """
         from mcp_server.tools import disable_site as disable_site_impl
-        result = await disable_site_impl(
-            name=name,
-            auto_reload=auto_reload,
-            dry_run=dry_run
-        )
+
+        result = await disable_site_impl(name=name, auto_reload=auto_reload, dry_run=dry_run)
         return json.dumps(result, indent=2, default=str)
 
     # ==========================================================================
@@ -277,6 +266,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Operation result with health status
         """
         from mcp_server.tools import nginx_reload as nginx_reload_impl
+
         result = await nginx_reload_impl(dry_run=dry_run)
         return json.dumps(result, indent=2, default=str)
 
@@ -295,6 +285,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Operation result with health status
         """
         from mcp_server.tools import nginx_restart as nginx_restart_impl
+
         result = await nginx_restart_impl(dry_run=dry_run)
         return json.dumps(result, indent=2, default=str)
 
@@ -310,6 +301,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Validation result with details
         """
         from mcp_server.tools import nginx_test as nginx_test_impl
+
         result = await nginx_test_impl()
         return json.dumps(result, indent=2, default=str)
 
@@ -323,7 +315,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
         alt_names: list[str] = None,
         auto_renew: bool = True,
         auto_reload: bool = True,
-        dry_run: bool = False
+        dry_run: bool = False,
     ) -> str:
         """
         Request a Let's Encrypt SSL certificate.
@@ -342,12 +334,9 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Operation result with certificate details
         """
         from mcp_server.tools import request_certificate as request_certificate_impl
+
         result = await request_certificate_impl(
-            domain=domain,
-            alt_names=alt_names,
-            auto_renew=auto_renew,
-            auto_reload=auto_reload,
-            dry_run=dry_run
+            domain=domain, alt_names=alt_names, auto_renew=auto_renew, auto_reload=auto_reload, dry_run=dry_run
         )
         return json.dumps(result, indent=2, default=str)
 
@@ -358,7 +347,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
         private_key_pem: str,
         chain_pem: str = None,
         auto_reload: bool = True,
-        dry_run: bool = False
+        dry_run: bool = False,
     ) -> str:
         """
         Upload a custom SSL certificate.
@@ -377,22 +366,20 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Operation result with certificate details
         """
         from mcp_server.tools import upload_certificate as upload_certificate_impl
+
         result = await upload_certificate_impl(
             domain=domain,
             certificate_pem=certificate_pem,
             private_key_pem=private_key_pem,
             chain_pem=chain_pem,
             auto_reload=auto_reload,
-            dry_run=dry_run
+            dry_run=dry_run,
         )
         return json.dumps(result, indent=2, default=str)
 
     @mcp.tool()
     async def renew_certificate(
-        domain: str,
-        force: bool = False,
-        auto_reload: bool = True,
-        dry_run: bool = False
+        domain: str, force: bool = False, auto_reload: bool = True, dry_run: bool = False
     ) -> str:
         """
         Manually trigger certificate renewal.
@@ -410,20 +397,12 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Operation result with certificate details
         """
         from mcp_server.tools import renew_certificate as renew_certificate_impl
-        result = await renew_certificate_impl(
-            domain=domain,
-            force=force,
-            auto_reload=auto_reload,
-            dry_run=dry_run
-        )
+
+        result = await renew_certificate_impl(domain=domain, force=force, auto_reload=auto_reload, dry_run=dry_run)
         return json.dumps(result, indent=2, default=str)
 
     @mcp.tool()
-    async def revoke_certificate(
-        domain: str,
-        auto_reload: bool = True,
-        dry_run: bool = False
-    ) -> str:
+    async def revoke_certificate(domain: str, auto_reload: bool = True, dry_run: bool = False) -> str:
         """
         Revoke and remove a certificate.
 
@@ -439,11 +418,8 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Operation result
         """
         from mcp_server.tools import revoke_certificate as revoke_certificate_impl
-        result = await revoke_certificate_impl(
-            domain=domain,
-            auto_reload=auto_reload,
-            dry_run=dry_run
-        )
+
+        result = await revoke_certificate_impl(domain=domain, auto_reload=auto_reload, dry_run=dry_run)
         return json.dumps(result, indent=2, default=str)
 
     @mcp.tool()
@@ -461,6 +437,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Diagnostic results with issues and suggestions
         """
         from mcp_server.tools import diagnose_ssl as diagnose_ssl_impl
+
         result = await diagnose_ssl_impl(domain=domain)
         return json.dumps(result, indent=2, default=str)
 
@@ -469,10 +446,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
     # ==========================================================================
 
     @mcp.tool()
-    async def rollback_transaction(
-        transaction_id: str,
-        reason: str = None
-    ) -> str:
+    async def rollback_transaction(transaction_id: str, reason: str = None) -> str:
         """
         Rollback a transaction to restore previous state.
 
@@ -487,10 +461,8 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Rollback result
         """
         from mcp_server.tools import rollback_transaction as rollback_transaction_impl
-        result = await rollback_transaction_impl(
-            transaction_id=transaction_id,
-            reason=reason
-        )
+
+        result = await rollback_transaction_impl(transaction_id=transaction_id, reason=reason)
         return json.dumps(result, indent=2, default=str)
 
     # ==========================================================================
@@ -508,7 +480,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
         request_ssl: bool = False,
         ssl_alt_names: list[str] = None,
         auto_renew: bool = True,
-        dry_run: bool = False
+        dry_run: bool = False,
     ) -> str:
         """
         Complete site setup workflow with optional SSL.
@@ -538,6 +510,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Workflow result with step details and transaction IDs
         """
         from mcp_server.tools import execute_setup_site_workflow
+
         result = await execute_setup_site_workflow(
             name=name,
             server_names=server_names,
@@ -548,7 +521,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             request_ssl=request_ssl,
             ssl_alt_names=ssl_alt_names,
             auto_renew=auto_renew,
-            dry_run=dry_run
+            dry_run=dry_run,
         )
         return json.dumps(result, indent=2, default=str)
 
@@ -559,7 +532,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
         listen_port: int = None,
         root_path: str = None,
         proxy_pass: str = None,
-        dry_run: bool = False
+        dry_run: bool = False,
     ) -> str:
         """
         Safely migrate/update a site with automatic rollback.
@@ -584,13 +557,14 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             Workflow result with step details and transaction IDs
         """
         from mcp_server.tools import execute_migrate_site_workflow
+
         result = await execute_migrate_site_workflow(
             name=name,
             server_names=server_names,
             listen_port=listen_port,
             root_path=root_path,
             proxy_pass=proxy_pass,
-            dry_run=dry_run
+            dry_run=dry_run,
         )
         return json.dumps(result, indent=2, default=str)
 
@@ -599,11 +573,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
     # ==========================================================================
 
     @mcp.prompt()
-    def setup_new_site(
-        domain: str,
-        site_type: str,
-        with_ssl: bool = True
-    ) -> str:
+    def setup_new_site(domain: str, site_type: str, with_ssl: bool = True) -> str:
         """
         Guide for setting up a new website.
 
@@ -616,13 +586,11 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             with_ssl: Request SSL certificate (default: true)
         """
         from mcp_server.prompts import get_setup_new_site_prompt
+
         return get_setup_new_site_prompt(domain, site_type, with_ssl)
 
     @mcp.prompt()
-    def add_ssl_to_site(
-        domain: str,
-        certificate_type: str = "letsencrypt"
-    ) -> str:
+    def add_ssl_to_site(domain: str, certificate_type: str = "letsencrypt") -> str:
         """
         Guide for adding SSL certificate to an existing site.
 
@@ -633,6 +601,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             certificate_type: "letsencrypt" or "custom"
         """
         from mcp_server.prompts import get_add_ssl_prompt
+
         return get_add_ssl_prompt(domain, certificate_type)
 
     @mcp.prompt()
@@ -646,6 +615,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             days_threshold: Days until expiry to consider "expiring soon"
         """
         from mcp_server.prompts import get_check_expiring_certs_prompt
+
         return get_check_expiring_certs_prompt(days_threshold)
 
     @mcp.prompt()
@@ -659,6 +629,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             domain: Domain experiencing issues
         """
         from mcp_server.prompts import get_diagnose_connectivity_prompt
+
         return get_diagnose_connectivity_prompt(domain)
 
     @mcp.prompt()
@@ -672,6 +643,7 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
             resource: Optional resource name that has issues
         """
         from mcp_server.prompts import get_rollback_changes_prompt
+
         return get_rollback_changes_prompt(resource)
 
     logger.info(f"MCP server '{name}' configured with resources, tools, and prompts")
@@ -689,6 +661,7 @@ def _validate_mcp_auth(transport: str) -> bool:
         True if auth is valid or not required, False if auth failed.
     """
     import os
+
     from config import settings
 
     if not settings.mcp_require_auth:
@@ -716,11 +689,7 @@ def _validate_mcp_auth(transport: str) -> bool:
     return True
 
 
-def run_mcp_server(
-    transport: str = "stdio",
-    host: str = "127.0.0.1",
-    port: int = 8080
-):
+def run_mcp_server(transport: str = "stdio", host: str = "127.0.0.1", port: int = 8080):
     """
     Run the MCP server with specified transport.
 
@@ -772,33 +741,14 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="NGINX Manager MCP Server")
     parser.add_argument(
-        "--transport",
-        choices=["stdio", "streamable-http"],
-        default="stdio",
-        help="Transport type (default: stdio)"
+        "--transport", choices=["stdio", "streamable-http"], default="stdio", help="Transport type (default: stdio)"
     )
-    parser.add_argument(
-        "--host",
-        default="127.0.0.1",
-        help="Host for HTTP transport (default: 127.0.0.1)"
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=8080,
-        help="Port for HTTP transport (default: 8080)"
-    )
+    parser.add_argument("--host", default="127.0.0.1", help="Host for HTTP transport (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=8080, help="Port for HTTP transport (default: 8080)")
 
     args = parser.parse_args()
 
     # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-    run_mcp_server(
-        transport=args.transport,
-        host=args.host,
-        port=args.port
-    )
+    run_mcp_server(transport=args.transport, host=args.host, port=args.port)

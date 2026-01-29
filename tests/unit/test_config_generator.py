@@ -2,9 +2,9 @@
 Unit tests for NGINX configuration generator.
 """
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+
+import pytest
 
 from core.config_generator import ConfigGenerator, ConfigGeneratorError, get_config_generator
 from core.config_generator.generator import TemplateNotFoundError
@@ -38,7 +38,7 @@ class TestConfigGenerator:
             site_type=SiteType.STATIC,
             listen_port=80,
             root_path="/var/www/example",
-            index_files=["index.html", "index.htm"]
+            index_files=["index.html", "index.htm"],
         )
 
         config = generator.generate(request)
@@ -56,7 +56,7 @@ class TestConfigGenerator:
             server_names=["api.example.com"],
             site_type=SiteType.REVERSE_PROXY,
             listen_port=80,
-            proxy_pass="http://localhost:3000"
+            proxy_pass="http://localhost:3000",
         )
 
         config = generator.generate(request)
@@ -76,7 +76,7 @@ class TestConfigGenerator:
             server_names=["dev.example.com"],
             site_type=SiteType.STATIC,
             listen_port=8080,
-            root_path="/var/www/dev"
+            root_path="/var/www/dev",
         )
 
         config = generator.generate(request)
@@ -90,7 +90,7 @@ class TestConfigGenerator:
             server_names=["app.example.com"],
             site_type=SiteType.REVERSE_PROXY,
             listen_port=443,
-            proxy_pass="http://backend:8080"
+            proxy_pass="http://backend:8080",
         )
 
         config = generator.generate(request)
@@ -105,7 +105,7 @@ class TestConfigGenerator:
             server_names=["multi.example.com", "alias1.com", "alias2.com"],
             site_type=SiteType.STATIC,
             listen_port=80,
-            root_path="/var/www/multi"
+            root_path="/var/www/multi",
         )
 
         config = generator.generate(request)

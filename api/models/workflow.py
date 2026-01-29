@@ -9,19 +9,21 @@ import re
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class WorkflowType(str, Enum):
     """Available workflow types."""
+
     SETUP_SITE = "setup_site"
     MIGRATE_SITE = "migrate_site"
 
 
 class WorkflowStepStatus(str, Enum):
     """Status of an individual workflow step."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -32,6 +34,7 @@ class WorkflowStepStatus(str, Enum):
 
 class WorkflowStatus(str, Enum):
     """Overall workflow execution status."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -44,6 +47,7 @@ class WorkflowStatus(str, Enum):
 # Step Result
 # =============================================================================
 
+
 class WorkflowStepResult(BaseModel):
     """Result of a single workflow step execution."""
 
@@ -51,24 +55,19 @@ class WorkflowStepResult(BaseModel):
     step_number: int = Field(..., description="Step sequence number (1-based)")
     status: WorkflowStepStatus = Field(..., description="Step outcome")
     message: str = Field(..., description="Human-readable result")
-    transaction_id: Optional[str] = Field(
-        None,
-        description="Transaction ID if step created one (rollback point)"
-    )
-    started_at: Optional[datetime] = Field(None, description="When step execution began")
-    completed_at: Optional[datetime] = Field(None, description="When step finished")
-    duration_ms: Optional[int] = Field(None, description="Step execution time in milliseconds")
-    data: Optional[Dict[str, Any]] = Field(None, description="Step-specific result data")
-    error: Optional[str] = Field(None, description="Error message if failed")
-    is_checkpoint: bool = Field(
-        default=False,
-        description="Whether this step is a rollback point"
-    )
+    transaction_id: str | None = Field(None, description="Transaction ID if step created one (rollback point)")
+    started_at: datetime | None = Field(None, description="When step execution began")
+    completed_at: datetime | None = Field(None, description="When step finished")
+    duration_ms: int | None = Field(None, description="Step execution time in milliseconds")
+    data: dict[str, Any] | None = Field(None, description="Step-specific result data")
+    error: str | None = Field(None, description="Error message if failed")
+    is_checkpoint: bool = Field(default=False, description="Whether this step is a rollback point")
 
 
 # =============================================================================
 # Workflow Requests
 # =============================================================================
+
 
 class SetupSiteRequest(BaseModel):
     """
@@ -79,52 +78,22 @@ class SetupSiteRequest(BaseModel):
     """
 
     name: str = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        description="Site name/identifier (becomes the config filename)"
+        ..., min_length=1, max_length=100, description="Site name/identifier (becomes the config filename)"
     )
-    server_names: List[str] = Field(
-        ...,
-        min_length=1,
-        description="Domain names for server_name directive"
-    )
-    site_type: str = Field(
-        ...,
-        description="Type of site: 'static' or 'reverse_proxy'"
-    )
-    listen_port: int = Field(
-        default=80,
-        ge=1,
-        le=65535,
-        description="Port to listen on"
-    )
+    server_names: list[str] = Field(..., min_length=1, description="Domain names for server_name directive")
+    site_type: str = Field(..., description="Type of site: 'static' or 'reverse_proxy'")
+    listen_port: int = Field(default=80, ge=1, le=65535, description="Port to listen on")
 
     # Static site options
-    root_path: Optional[str] = Field(
-        None,
-        description="Document root path (required for static sites)"
-    )
+    root_path: str | None = Field(None, description="Document root path (required for static sites)")
 
     # Reverse proxy options
-    proxy_pass: Optional[str] = Field(
-        None,
-        description="Backend URL (required for reverse proxy sites)"
-    )
+    proxy_pass: str | None = Field(None, description="Backend URL (required for reverse proxy sites)")
 
     # SSL options
-    request_ssl: bool = Field(
-        default=False,
-        description="Request a Let's Encrypt SSL certificate after site creation"
-    )
-    ssl_alt_names: Optional[List[str]] = Field(
-        None,
-        description="Additional domain names for the SSL certificate (SANs)"
-    )
-    auto_renew: bool = Field(
-        default=True,
-        description="Enable automatic certificate renewal"
-    )
+    request_ssl: bool = Field(default=False, description="Request a Let's Encrypt SSL certificate after site creation")
+    ssl_alt_names: list[str] | None = Field(None, description="Additional domain names for the SSL certificate (SANs)")
+    auto_renew: bool = Field(default=True, description="Enable automatic certificate renewal")
 
     @field_validator("name")
     @classmethod
@@ -140,7 +109,7 @@ class SetupSiteRequest(BaseModel):
 
     @field_validator("server_names")
     @classmethod
-    def validate_server_names(cls, v: List[str]) -> List[str]:
+    def validate_server_names(cls, v: list[str]) -> list[str]:
         validated = []
         for name in v:
             name = name.strip().lower()
@@ -162,7 +131,7 @@ class SetupSiteRequest(BaseModel):
 
     @field_validator("root_path")
     @classmethod
-    def validate_root_path(cls, v: Optional[str]) -> Optional[str]:
+    def validate_root_path(cls, v: str | None) -> str | None:
         if v is not None:
             if not v.startswith("/"):
                 raise ValueError("Root path must be an absolute path")
@@ -172,7 +141,7 @@ class SetupSiteRequest(BaseModel):
 
     @field_validator("proxy_pass")
     @classmethod
-    def validate_proxy_pass(cls, v: Optional[str]) -> Optional[str]:
+    def validate_proxy_pass(cls, v: str | None) -> str | None:
         if v is not None:
             if not v.startswith(("http://", "https://")):
                 raise ValueError("Proxy pass must be an HTTP or HTTPS URL")
@@ -197,30 +166,11 @@ class MigrateSiteRequest(BaseModel):
     backup, validation, and rollback on failure.
     """
 
-    name: str = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        description="Site name to migrate"
-    )
-    server_names: Optional[List[str]] = Field(
-        None,
-        description="Updated domain names"
-    )
-    listen_port: Optional[int] = Field(
-        None,
-        ge=1,
-        le=65535,
-        description="Updated listen port"
-    )
-    root_path: Optional[str] = Field(
-        None,
-        description="Updated document root"
-    )
-    proxy_pass: Optional[str] = Field(
-        None,
-        description="Updated backend URL"
-    )
+    name: str = Field(..., min_length=1, max_length=100, description="Site name to migrate")
+    server_names: list[str] | None = Field(None, description="Updated domain names")
+    listen_port: int | None = Field(None, ge=1, le=65535, description="Updated listen port")
+    root_path: str | None = Field(None, description="Updated document root")
+    proxy_pass: str | None = Field(None, description="Updated backend URL")
 
     @field_validator("name")
     @classmethod
@@ -236,7 +186,7 @@ class MigrateSiteRequest(BaseModel):
 
     @field_validator("server_names")
     @classmethod
-    def validate_server_names(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+    def validate_server_names(cls, v: list[str] | None) -> list[str] | None:
         if v is None:
             return v
         validated = []
@@ -253,7 +203,7 @@ class MigrateSiteRequest(BaseModel):
 
     @field_validator("root_path")
     @classmethod
-    def validate_root_path(cls, v: Optional[str]) -> Optional[str]:
+    def validate_root_path(cls, v: str | None) -> str | None:
         if v is not None:
             if not v.startswith("/"):
                 raise ValueError("Root path must be an absolute path")
@@ -263,7 +213,7 @@ class MigrateSiteRequest(BaseModel):
 
     @field_validator("proxy_pass")
     @classmethod
-    def validate_proxy_pass(cls, v: Optional[str]) -> Optional[str]:
+    def validate_proxy_pass(cls, v: str | None) -> str | None:
         if v is not None:
             if not v.startswith(("http://", "https://")):
                 raise ValueError("Proxy pass must be an HTTP or HTTPS URL")
@@ -274,12 +224,12 @@ class MigrateSiteRequest(BaseModel):
 # Workflow Responses
 # =============================================================================
 
+
 class WorkflowResponse(BaseModel):
     """Response from a workflow execution."""
 
     workflow_id: str = Field(
-        default_factory=lambda: f"wf-{uuid.uuid4().hex[:12]}",
-        description="Unique workflow execution ID"
+        default_factory=lambda: f"wf-{uuid.uuid4().hex[:12]}", description="Unique workflow execution ID"
     )
     workflow_type: WorkflowType = Field(..., description="Type of workflow executed")
     status: WorkflowStatus = Field(..., description="Overall workflow outcome")
@@ -288,47 +238,26 @@ class WorkflowResponse(BaseModel):
     # Execution details
     total_steps: int = Field(..., description="Total number of steps in workflow")
     completed_steps: int = Field(default=0, description="Steps that completed successfully")
-    failed_step: Optional[str] = Field(
-        None,
-        description="Name of step that failed, if any"
-    )
+    failed_step: str | None = Field(None, description="Name of step that failed, if any")
 
     # Step details
-    steps: List[WorkflowStepResult] = Field(
-        default_factory=list,
-        description="Detailed result for each step"
-    )
+    steps: list[WorkflowStepResult] = Field(default_factory=list, description="Detailed result for each step")
 
     # Rollback info
-    rolled_back: bool = Field(
-        default=False,
-        description="Whether rollback was performed after failure"
-    )
-    rollback_details: Optional[Dict[str, Any]] = Field(
-        None,
-        description="Details of rollback operations if performed"
-    )
+    rolled_back: bool = Field(default=False, description="Whether rollback was performed after failure")
+    rollback_details: dict[str, Any] | None = Field(None, description="Details of rollback operations if performed")
 
     # Timing
-    started_at: Optional[datetime] = Field(None, description="Workflow start time")
-    completed_at: Optional[datetime] = Field(None, description="Workflow end time")
-    total_duration_ms: Optional[int] = Field(None, description="Total execution time")
+    started_at: datetime | None = Field(None, description="Workflow start time")
+    completed_at: datetime | None = Field(None, description="Workflow end time")
+    total_duration_ms: int | None = Field(None, description="Total execution time")
 
     # Transaction tracking
-    transaction_ids: List[str] = Field(
-        default_factory=list,
-        description="All transaction IDs created during workflow"
-    )
+    transaction_ids: list[str] = Field(default_factory=list, description="All transaction IDs created during workflow")
 
     # AI context
-    suggestions: List[Dict[str, Any]] = Field(
-        default_factory=list,
-        description="Suggested next actions"
-    )
-    warnings: List[Dict[str, Any]] = Field(
-        default_factory=list,
-        description="Non-blocking warnings"
-    )
+    suggestions: list[dict[str, Any]] = Field(default_factory=list, description="Suggested next actions")
+    warnings: list[dict[str, Any]] = Field(default_factory=list, description="Non-blocking warnings")
 
 
 class WorkflowDryRunResponse(BaseModel):
@@ -336,30 +265,15 @@ class WorkflowDryRunResponse(BaseModel):
 
     dry_run: bool = Field(default=True, description="Always true for dry-run responses")
     workflow_type: WorkflowType = Field(..., description="Type of workflow")
-    would_succeed: bool = Field(
-        ...,
-        description="Whether the workflow is expected to succeed (best estimate)"
-    )
+    would_succeed: bool = Field(..., description="Whether the workflow is expected to succeed (best estimate)")
     message: str = Field(..., description="Summary of what would happen")
 
-    steps: List[Dict[str, Any]] = Field(
-        default_factory=list,
-        description="What each step would do"
-    )
+    steps: list[dict[str, Any]] = Field(default_factory=list, description="What each step would do")
 
-    warnings: List[Dict[str, Any]] = Field(
-        default_factory=list,
-        description="Potential issues identified"
-    )
+    warnings: list[dict[str, Any]] = Field(default_factory=list, description="Potential issues identified")
 
-    prerequisites_met: bool = Field(
-        default=True,
-        description="Whether all prerequisites are satisfied"
-    )
-    missing_prerequisites: List[str] = Field(
-        default_factory=list,
-        description="Prerequisites that are not met"
-    )
+    prerequisites_met: bool = Field(default=True, description="Whether all prerequisites are satisfied")
+    missing_prerequisites: list[str] = Field(default_factory=list, description="Prerequisites that are not met")
 
 
 class WorkflowProgressEvent(BaseModel):
@@ -369,10 +283,10 @@ class WorkflowProgressEvent(BaseModel):
     event_type: str = Field(
         ...,
         description="Event type: workflow_started, step_started, step_completed, "
-        "step_failed, step_skipped, workflow_completed, workflow_failed"
+        "step_failed, step_skipped, workflow_completed, workflow_failed",
     )
-    step_name: Optional[str] = Field(None, description="Current step name")
-    step_number: Optional[int] = Field(None, description="Current step number (1-based)")
+    step_name: str | None = Field(None, description="Current step name")
+    step_number: int | None = Field(None, description="Current step number (1-based)")
     total_steps: int = Field(default=0, description="Total steps in workflow")
     message: str = Field(default="", description="Human-readable progress message")
-    data: Optional[Dict[str, Any]] = Field(None, description="Event-specific data")
+    data: dict[str, Any] | None = Field(None, description="Event-specific data")

@@ -5,24 +5,23 @@ API key creation, listing, revocation, and bootstrap.
 """
 
 import logging
-from typing import List
 
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 
 from config import settings
-from core.auth_service import get_auth_service
 from core.auth_dependency import get_current_auth, require_role
+from core.auth_service import get_auth_service
 from models.auth import (
-    Role,
-    AuthContext,
     APIKeyCreateRequest,
     APIKeyCreateResponse,
     APIKeyListResponse,
+    AuthContext,
     BootstrapRequest,
     BootstrapResponse,
+    Role,
+    TokenRefreshResponse,
     TokenRequest,
     TokenResponse,
-    TokenRefreshResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,7 +46,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
         200: {"description": "Admin key created"},
         400: {"description": "Keys already exist or master key not configured"},
         401: {"description": "Invalid master key"},
-    }
+    },
 )
 async def bootstrap(
     request: BootstrapRequest = None,
@@ -56,21 +55,16 @@ async def bootstrap(
     """Create the initial admin API key."""
     if not settings.auth_master_key:
         raise HTTPException(
-            status_code=400,
-            detail="AUTH_MASTER_KEY is not configured. Set it in environment variables."
+            status_code=400, detail="AUTH_MASTER_KEY is not configured. Set it in environment variables."
         )
 
     if not x_master_key or x_master_key != settings.auth_master_key:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid master key."
-        )
+        raise HTTPException(status_code=401, detail="Invalid master key.")
 
     auth_service = get_auth_service()
     if await auth_service.has_any_keys():
         raise HTTPException(
-            status_code=400,
-            detail="API keys already exist. Use an existing admin key to create new keys."
+            status_code=400, detail="API keys already exist. Use an existing admin key to create new keys."
         )
 
     name = request.name if request else "Initial Admin Key"
@@ -89,14 +83,14 @@ async def bootstrap(
             {
                 "action": "Store the plaintext key securely",
                 "reason": "This key grants full admin access and is shown only once",
-                "priority": "critical"
+                "priority": "critical",
             },
             {
                 "action": "Set AUTH_ENABLED=true and restart the API",
                 "reason": "Authentication is not enforced until AUTH_ENABLED=true",
-                "priority": "high"
-            }
-        ]
+                "priority": "high",
+            },
+        ],
     )
 
 
@@ -109,7 +103,7 @@ async def bootstrap(
         200: {"description": "API key created"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions"},
-    }
+    },
 )
 async def create_api_key(
     request: APIKeyCreateRequest,
@@ -141,7 +135,7 @@ async def create_api_key(
         200: {"description": "List of API keys"},
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions"},
-    }
+    },
 )
 async def list_api_keys(
     auth: AuthContext = Depends(require_role(Role.ADMIN)),
@@ -153,18 +147,22 @@ async def list_api_keys(
     suggestions = []
     expired = [k for k in keys if k.is_expired]
     if expired:
-        suggestions.append({
-            "action": f"Clean up {len(expired)} expired key(s)",
-            "reason": "Expired keys should be revoked for security",
-            "priority": "medium"
-        })
+        suggestions.append(
+            {
+                "action": f"Clean up {len(expired)} expired key(s)",
+                "reason": "Expired keys should be revoked for security",
+                "priority": "medium",
+            }
+        )
     inactive = [k for k in keys if not k.is_active]
     if inactive:
-        suggestions.append({
-            "action": f"{len(inactive)} key(s) are revoked",
-            "reason": "Revoked keys remain in the list for audit purposes",
-            "priority": "low"
-        })
+        suggestions.append(
+            {
+                "action": f"{len(inactive)} key(s) are revoked",
+                "reason": "Revoked keys remain in the list for audit purposes",
+                "priority": "low",
+            }
+        )
 
     return APIKeyListResponse(
         keys=keys,
@@ -187,7 +185,7 @@ async def list_api_keys(
         200: {"description": "JWT token issued"},
         401: {"description": "Invalid API key"},
         400: {"description": "JWT not configured"},
-    }
+    },
 )
 async def create_token(request: TokenRequest):
     """Exchange an API key for a JWT token."""
@@ -221,7 +219,7 @@ async def create_token(request: TokenRequest):
         200: {"description": "New JWT token issued"},
         401: {"description": "Invalid or expired token"},
         400: {"description": "JWT not configured"},
-    }
+    },
 )
 async def refresh_token(
     auth: AuthContext = Depends(get_current_auth),
@@ -254,7 +252,7 @@ async def refresh_token(
         401: {"description": "Not authenticated"},
         403: {"description": "Insufficient permissions"},
         404: {"description": "Key not found"},
-    }
+    },
 )
 async def revoke_api_key(
     key_id: str,
@@ -269,10 +267,7 @@ async def revoke_api_key(
 
     # Prevent revoking your own key
     if auth.api_key_id == key_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot revoke the key you are currently using."
-        )
+        raise HTTPException(status_code=400, detail="Cannot revoke the key you are currently using.")
 
     await auth_service.revoke_api_key(key_id)
 
@@ -284,7 +279,7 @@ async def revoke_api_key(
             {
                 "action": "Rotate any systems using this key",
                 "reason": "The revoked key will no longer authenticate",
-                "priority": "high"
+                "priority": "high",
             }
-        ]
+        ],
     }

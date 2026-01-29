@@ -6,11 +6,7 @@ understand context and execute multi-step operations effectively.
 """
 
 
-def get_setup_new_site_prompt(
-    domain: str,
-    site_type: str,
-    with_ssl: bool = True
-) -> str:
+def get_setup_new_site_prompt(domain: str, site_type: str, with_ssl: bool = True) -> str:
     """
     Generate a prompt for setting up a new website.
 
@@ -103,10 +99,7 @@ You are setting up a new website for domain: **{domain}**
 """
 
 
-def get_add_ssl_prompt(
-    domain: str,
-    certificate_type: str = "letsencrypt"
-) -> str:
+def get_add_ssl_prompt(domain: str, certificate_type: str = "letsencrypt") -> str:
     """
     Generate a prompt for adding SSL to an existing site.
 
@@ -379,7 +372,7 @@ def get_rollback_changes_prompt(resource: str = None) -> str:
     if resource:
         resource_filter = f"\n   - Filter by resource: Look for `resource_id: '{resource}'`"
 
-    return f"""# Rolling Back Changes{' for ' + resource if resource else ''}
+    return f"""# Rolling Back Changes{" for " + resource if resource else ""}
 
 Safely reverting recent changes to restore working state.
 
@@ -491,75 +484,43 @@ AVAILABLE_PROMPTS = {
         "name": "setup_new_site",
         "description": "Guide for setting up a new website with optional SSL",
         "arguments": [
-            {
-                "name": "domain",
-                "description": "Primary domain name",
-                "required": True
-            },
-            {
-                "name": "site_type",
-                "description": "Type of site: 'static' or 'reverse_proxy'",
-                "required": True
-            },
-            {
-                "name": "with_ssl",
-                "description": "Request SSL certificate (default: true)",
-                "required": False
-            }
+            {"name": "domain", "description": "Primary domain name", "required": True},
+            {"name": "site_type", "description": "Type of site: 'static' or 'reverse_proxy'", "required": True},
+            {"name": "with_ssl", "description": "Request SSL certificate (default: true)", "required": False},
         ],
-        "generator": get_setup_new_site_prompt
+        "generator": get_setup_new_site_prompt,
     },
     "add_ssl_to_site": {
         "name": "add_ssl_to_site",
         "description": "Guide for adding SSL certificate to an existing site",
         "arguments": [
-            {
-                "name": "domain",
-                "description": "Domain to add SSL to",
-                "required": True
-            },
+            {"name": "domain", "description": "Domain to add SSL to", "required": True},
             {
                 "name": "certificate_type",
                 "description": "Type: 'letsencrypt' or 'custom' (default: letsencrypt)",
-                "required": False
-            }
+                "required": False,
+            },
         ],
-        "generator": get_add_ssl_prompt
+        "generator": get_add_ssl_prompt,
     },
     "check_expiring_certs": {
         "name": "check_expiring_certs",
         "description": "Guide for managing certificate renewals",
         "arguments": [
-            {
-                "name": "days_threshold",
-                "description": "Days until expiry threshold (default: 30)",
-                "required": False
-            }
+            {"name": "days_threshold", "description": "Days until expiry threshold (default: 30)", "required": False}
         ],
-        "generator": get_check_expiring_certs_prompt
+        "generator": get_check_expiring_certs_prompt,
     },
     "diagnose_connectivity": {
         "name": "diagnose_connectivity",
         "description": "Guide for troubleshooting site connectivity issues",
-        "arguments": [
-            {
-                "name": "domain",
-                "description": "Domain experiencing issues",
-                "required": True
-            }
-        ],
-        "generator": get_diagnose_connectivity_prompt
+        "arguments": [{"name": "domain", "description": "Domain experiencing issues", "required": True}],
+        "generator": get_diagnose_connectivity_prompt,
     },
     "rollback_changes": {
         "name": "rollback_changes",
         "description": "Guide for safely rolling back problematic changes",
-        "arguments": [
-            {
-                "name": "resource",
-                "description": "Optional resource name that has issues",
-                "required": False
-            }
-        ],
-        "generator": get_rollback_changes_prompt
-    }
+        "arguments": [{"name": "resource", "description": "Optional resource name that has issues", "required": False}],
+        "generator": get_rollback_changes_prompt,
+    },
 }

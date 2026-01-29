@@ -5,23 +5,23 @@ Tests workflow execution, checkpoint rollback, skip conditions,
 progress callbacks, and error handling.
 """
 
-import pytest
 import asyncio
-from datetime import datetime
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from core.workflow_engine import WorkflowEngine, WorkflowStep
 from models.workflow import (
-    WorkflowType,
+    WorkflowProgressEvent,
     WorkflowStatus,
     WorkflowStepStatus,
-    WorkflowProgressEvent,
+    WorkflowType,
 )
-
 
 # =============================================================================
 # Helper step functions for testing
 # =============================================================================
+
 
 async def success_step(context):
     return {"success": True, "message": "Step succeeded"}
@@ -72,12 +72,14 @@ class TestWorkflowEngineBasic:
     @pytest.mark.asyncio
     async def test_single_successful_step(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="test_step",
-            description="A test step",
-            execute=success_step,
-            is_checkpoint=False,
-        ))
+        engine.add_step(
+            WorkflowStep(
+                name="test_step",
+                description="A test step",
+                execute=success_step,
+                is_checkpoint=False,
+            )
+        )
 
         result = await engine.execute({})
         assert result.status == WorkflowStatus.COMPLETED
@@ -90,12 +92,14 @@ class TestWorkflowEngineBasic:
     async def test_multiple_successful_steps(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
         for i in range(3):
-            engine.add_step(WorkflowStep(
-                name=f"step_{i}",
-                description=f"Step {i}",
-                execute=success_step,
-                is_checkpoint=False,
-            ))
+            engine.add_step(
+                WorkflowStep(
+                    name=f"step_{i}",
+                    description=f"Step {i}",
+                    execute=success_step,
+                    is_checkpoint=False,
+                )
+            )
 
         result = await engine.execute({})
         assert result.status == WorkflowStatus.COMPLETED
@@ -105,18 +109,14 @@ class TestWorkflowEngineBasic:
     @pytest.mark.asyncio
     async def test_workflow_id_generated(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="test", description="Test", execute=success_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="test", description="Test", execute=success_step, is_checkpoint=False))
         result = await engine.execute({})
         assert result.workflow_id.startswith("wf-")
 
     @pytest.mark.asyncio
     async def test_timing_recorded(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="test", description="Test", execute=success_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="test", description="Test", execute=success_step, is_checkpoint=False))
         result = await engine.execute({})
         assert result.started_at is not None
         assert result.completed_at is not None
@@ -126,9 +126,7 @@ class TestWorkflowEngineBasic:
     @pytest.mark.asyncio
     async def test_step_timing_recorded(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="test", description="Test", execute=success_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="test", description="Test", execute=success_step, is_checkpoint=False))
         result = await engine.execute({})
         step = result.steps[0]
         assert step.started_at is not None
@@ -142,9 +140,7 @@ class TestWorkflowEngineFailure:
     @pytest.mark.asyncio
     async def test_step_returns_failure(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="failing", description="Fails", execute=failure_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="failing", description="Fails", execute=failure_step, is_checkpoint=False))
 
         result = await engine.execute({})
         assert result.status == WorkflowStatus.FAILED
@@ -154,9 +150,9 @@ class TestWorkflowEngineFailure:
     @pytest.mark.asyncio
     async def test_step_raises_exception(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="exploding", description="Explodes", execute=exception_step, is_checkpoint=False
-        ))
+        engine.add_step(
+            WorkflowStep(name="exploding", description="Explodes", execute=exception_step, is_checkpoint=False)
+        )
 
         result = await engine.execute({})
         assert result.status == WorkflowStatus.FAILED
@@ -166,15 +162,11 @@ class TestWorkflowEngineFailure:
     @pytest.mark.asyncio
     async def test_failure_stops_execution(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="step1", description="Success", execute=success_step, is_checkpoint=False
-        ))
-        engine.add_step(WorkflowStep(
-            name="step2", description="Fail", execute=failure_step, is_checkpoint=False
-        ))
-        engine.add_step(WorkflowStep(
-            name="step3", description="Never reached", execute=success_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="step1", description="Success", execute=success_step, is_checkpoint=False))
+        engine.add_step(WorkflowStep(name="step2", description="Fail", execute=failure_step, is_checkpoint=False))
+        engine.add_step(
+            WorkflowStep(name="step3", description="Never reached", execute=success_step, is_checkpoint=False)
+        )
 
         result = await engine.execute({})
         assert result.status == WorkflowStatus.PARTIALLY_COMPLETED
@@ -187,11 +179,9 @@ class TestWorkflowEngineFailure:
     async def test_timeout_causes_failure(self):
         engine = WorkflowEngine(
             workflow_type=WorkflowType.SETUP_SITE,
-            step_timeout=1  # 1 second timeout
+            step_timeout=1,  # 1 second timeout
         )
-        engine.add_step(WorkflowStep(
-            name="slow", description="Too slow", execute=slow_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="slow", description="Too slow", execute=slow_step, is_checkpoint=False))
 
         result = await engine.execute({})
         assert result.status == WorkflowStatus.FAILED
@@ -205,14 +195,10 @@ class TestWorkflowEngineRollback:
     @pytest.mark.asyncio
     async def test_rollback_on_failure(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE, auto_rollback=True)
-        engine.add_step(WorkflowStep(
-            name="create", description="Create",
-            execute=success_step_with_txn, is_checkpoint=True
-        ))
-        engine.add_step(WorkflowStep(
-            name="verify", description="Verify",
-            execute=failure_step, is_checkpoint=False
-        ))
+        engine.add_step(
+            WorkflowStep(name="create", description="Create", execute=success_step_with_txn, is_checkpoint=True)
+        )
+        engine.add_step(WorkflowStep(name="verify", description="Verify", execute=failure_step, is_checkpoint=False))
 
         with patch("core.transaction_manager.get_transaction_manager") as mock_get_tm:
             mock_tm = MagicMock()
@@ -226,25 +212,18 @@ class TestWorkflowEngineRollback:
             result = await engine.execute({})
             assert result.status == WorkflowStatus.ROLLED_BACK
             assert result.rolled_back is True
-            mock_tm.rollback_transaction.assert_called_once_with(
-                "txn-test-123", reason="Workflow step 'verify' failed"
-            )
+            mock_tm.rollback_transaction.assert_called_once_with("txn-test-123", reason="Workflow step 'verify' failed")
 
     @pytest.mark.asyncio
     async def test_multiple_checkpoints_rolled_back_in_reverse(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE, auto_rollback=True)
-        engine.add_step(WorkflowStep(
-            name="step1", description="Step 1",
-            execute=success_step_with_txn, is_checkpoint=True
-        ))
-        engine.add_step(WorkflowStep(
-            name="step2", description="Step 2",
-            execute=success_step_with_txn_2, is_checkpoint=True
-        ))
-        engine.add_step(WorkflowStep(
-            name="step3", description="Fail",
-            execute=failure_step, is_checkpoint=False
-        ))
+        engine.add_step(
+            WorkflowStep(name="step1", description="Step 1", execute=success_step_with_txn, is_checkpoint=True)
+        )
+        engine.add_step(
+            WorkflowStep(name="step2", description="Step 2", execute=success_step_with_txn_2, is_checkpoint=True)
+        )
+        engine.add_step(WorkflowStep(name="step3", description="Fail", execute=failure_step, is_checkpoint=False))
 
         with patch("core.transaction_manager.get_transaction_manager") as mock_get_tm:
             mock_tm = MagicMock()
@@ -266,14 +245,10 @@ class TestWorkflowEngineRollback:
     @pytest.mark.asyncio
     async def test_no_rollback_when_disabled(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE, auto_rollback=False)
-        engine.add_step(WorkflowStep(
-            name="create", description="Create",
-            execute=success_step_with_txn, is_checkpoint=True
-        ))
-        engine.add_step(WorkflowStep(
-            name="verify", description="Verify",
-            execute=failure_step, is_checkpoint=False
-        ))
+        engine.add_step(
+            WorkflowStep(name="create", description="Create", execute=success_step_with_txn, is_checkpoint=True)
+        )
+        engine.add_step(WorkflowStep(name="verify", description="Verify", execute=failure_step, is_checkpoint=False))
 
         result = await engine.execute({})
         assert result.rolled_back is False
@@ -282,14 +257,18 @@ class TestWorkflowEngineRollback:
     @pytest.mark.asyncio
     async def test_no_rollback_for_non_critical_failure(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE, auto_rollback=True)
-        engine.add_step(WorkflowStep(
-            name="create", description="Create",
-            execute=success_step_with_txn, is_checkpoint=True
-        ))
-        engine.add_step(WorkflowStep(
-            name="optional", description="Optional step",
-            execute=failure_step, is_checkpoint=False, rollback_on_failure=False
-        ))
+        engine.add_step(
+            WorkflowStep(name="create", description="Create", execute=success_step_with_txn, is_checkpoint=True)
+        )
+        engine.add_step(
+            WorkflowStep(
+                name="optional",
+                description="Optional step",
+                execute=failure_step,
+                is_checkpoint=False,
+                rollback_on_failure=False,
+            )
+        )
 
         result = await engine.execute({})
         assert result.rolled_back is False
@@ -298,14 +277,8 @@ class TestWorkflowEngineRollback:
     @pytest.mark.asyncio
     async def test_no_rollback_when_no_checkpoints(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE, auto_rollback=True)
-        engine.add_step(WorkflowStep(
-            name="check", description="Check",
-            execute=success_step, is_checkpoint=False
-        ))
-        engine.add_step(WorkflowStep(
-            name="fail", description="Fail",
-            execute=failure_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="check", description="Check", execute=success_step, is_checkpoint=False))
+        engine.add_step(WorkflowStep(name="fail", description="Fail", execute=failure_step, is_checkpoint=False))
 
         result = await engine.execute({})
         assert result.rolled_back is False
@@ -318,15 +291,18 @@ class TestWorkflowEngineSkipCondition:
     @pytest.mark.asyncio
     async def test_skip_condition_skips_step(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="always_run", description="Always runs",
-            execute=success_step, is_checkpoint=False
-        ))
-        engine.add_step(WorkflowStep(
-            name="conditional", description="Conditional",
-            execute=success_step, is_checkpoint=False,
-            skip_condition=lambda ctx: True  # Always skip
-        ))
+        engine.add_step(
+            WorkflowStep(name="always_run", description="Always runs", execute=success_step, is_checkpoint=False)
+        )
+        engine.add_step(
+            WorkflowStep(
+                name="conditional",
+                description="Conditional",
+                execute=success_step,
+                is_checkpoint=False,
+                skip_condition=lambda ctx: True,  # Always skip
+            )
+        )
 
         result = await engine.execute({})
         assert result.completed_steps == 1
@@ -337,29 +313,31 @@ class TestWorkflowEngineSkipCondition:
     @pytest.mark.asyncio
     async def test_skip_condition_based_on_context(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="step1", description="Step 1",
-            execute=success_step, is_checkpoint=False
-        ))
-        engine.add_step(WorkflowStep(
-            name="ssl_step", description="SSL step",
-            execute=success_step, is_checkpoint=False,
-            skip_condition=lambda ctx: not ctx.get("request_ssl", False)
-        ))
+        engine.add_step(WorkflowStep(name="step1", description="Step 1", execute=success_step, is_checkpoint=False))
+        engine.add_step(
+            WorkflowStep(
+                name="ssl_step",
+                description="SSL step",
+                execute=success_step,
+                is_checkpoint=False,
+                skip_condition=lambda ctx: not ctx.get("request_ssl", False),
+            )
+        )
 
         result = await engine.execute({"request_ssl": False})
         assert result.steps[1].status == WorkflowStepStatus.SKIPPED
 
         engine2 = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine2.add_step(WorkflowStep(
-            name="step1", description="Step 1",
-            execute=success_step, is_checkpoint=False
-        ))
-        engine2.add_step(WorkflowStep(
-            name="ssl_step", description="SSL step",
-            execute=success_step, is_checkpoint=False,
-            skip_condition=lambda ctx: not ctx.get("request_ssl", False)
-        ))
+        engine2.add_step(WorkflowStep(name="step1", description="Step 1", execute=success_step, is_checkpoint=False))
+        engine2.add_step(
+            WorkflowStep(
+                name="ssl_step",
+                description="SSL step",
+                execute=success_step,
+                is_checkpoint=False,
+                skip_condition=lambda ctx: not ctx.get("request_ssl", False),
+            )
+        )
         result2 = await engine2.execute({"request_ssl": True})
         assert result2.steps[1].status == WorkflowStepStatus.COMPLETED
 
@@ -370,14 +348,16 @@ class TestWorkflowEngineContext:
     @pytest.mark.asyncio
     async def test_context_shared_between_steps(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="writer", description="Write to context",
-            execute=context_writer_step, is_checkpoint=False
-        ))
-        engine.add_step(WorkflowStep(
-            name="reader", description="Read from context",
-            execute=context_reader_step, is_checkpoint=False
-        ))
+        engine.add_step(
+            WorkflowStep(
+                name="writer", description="Write to context", execute=context_writer_step, is_checkpoint=False
+            )
+        )
+        engine.add_step(
+            WorkflowStep(
+                name="reader", description="Read from context", execute=context_reader_step, is_checkpoint=False
+            )
+        )
 
         result = await engine.execute({})
         assert result.status == WorkflowStatus.COMPLETED
@@ -389,10 +369,7 @@ class TestWorkflowEngineContext:
     @pytest.mark.asyncio
     async def test_step_results_stored_in_context(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="first", description="First",
-            execute=success_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="first", description="First", execute=success_step, is_checkpoint=False))
 
         context = {}
         await engine.execute(context)
@@ -402,14 +379,12 @@ class TestWorkflowEngineContext:
     @pytest.mark.asyncio
     async def test_transaction_ids_collected(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="step1", description="Step 1",
-            execute=success_step_with_txn, is_checkpoint=True
-        ))
-        engine.add_step(WorkflowStep(
-            name="step2", description="Step 2",
-            execute=success_step_with_txn_2, is_checkpoint=True
-        ))
+        engine.add_step(
+            WorkflowStep(name="step1", description="Step 1", execute=success_step_with_txn, is_checkpoint=True)
+        )
+        engine.add_step(
+            WorkflowStep(name="step2", description="Step 2", execute=success_step_with_txn_2, is_checkpoint=True)
+        )
 
         result = await engine.execute({})
         assert result.transaction_ids == ["txn-test-123", "txn-test-456"]
@@ -421,9 +396,7 @@ class TestWorkflowEngineProgress:
     @pytest.mark.asyncio
     async def test_progress_callbacks_invoked(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="test", description="Test", execute=success_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="test", description="Test", execute=success_step, is_checkpoint=False))
 
         events = []
 
@@ -443,9 +416,7 @@ class TestWorkflowEngineProgress:
     @pytest.mark.asyncio
     async def test_progress_callback_error_doesnt_break_workflow(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="test", description="Test", execute=success_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="test", description="Test", execute=success_step, is_checkpoint=False))
 
         async def broken_callback(event):
             raise RuntimeError("Callback broke")
@@ -457,9 +428,7 @@ class TestWorkflowEngineProgress:
     @pytest.mark.asyncio
     async def test_failure_emits_workflow_failed(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="fail", description="Fail", execute=failure_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="fail", description="Fail", execute=failure_step, is_checkpoint=False))
 
         events = []
 
@@ -480,9 +449,7 @@ class TestWorkflowEngineSuggestions:
     @pytest.mark.asyncio
     async def test_completed_workflow_has_suggestions(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="test", description="Test", execute=success_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="test", description="Test", execute=success_step, is_checkpoint=False))
 
         result = await engine.execute({"name": "test.com", "server_names": ["test.com"]})
         assert len(result.suggestions) > 0
@@ -490,9 +457,7 @@ class TestWorkflowEngineSuggestions:
     @pytest.mark.asyncio
     async def test_failed_workflow_has_suggestions(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE, auto_rollback=False)
-        engine.add_step(WorkflowStep(
-            name="fail", description="Fail", execute=failure_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="fail", description="Fail", execute=failure_step, is_checkpoint=False))
 
         result = await engine.execute({})
         assert len(result.suggestions) > 0
@@ -500,12 +465,8 @@ class TestWorkflowEngineSuggestions:
     @pytest.mark.asyncio
     async def test_summary_message_format(self):
         engine = WorkflowEngine(workflow_type=WorkflowType.SETUP_SITE)
-        engine.add_step(WorkflowStep(
-            name="s1", description="S1", execute=success_step, is_checkpoint=False
-        ))
-        engine.add_step(WorkflowStep(
-            name="s2", description="S2", execute=success_step, is_checkpoint=False
-        ))
+        engine.add_step(WorkflowStep(name="s1", description="S1", execute=success_step, is_checkpoint=False))
+        engine.add_step(WorkflowStep(name="s2", description="S2", execute=success_step, is_checkpoint=False))
 
         result = await engine.execute({})
         assert "2/2" in result.message

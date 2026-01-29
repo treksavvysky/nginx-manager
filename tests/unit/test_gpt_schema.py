@@ -2,20 +2,14 @@
 Unit tests for GPT schema generation.
 """
 
-import pytest
-
-from core.gpt_schema import generate_gpt_schema, _ensure_operation_ids, _truncate_descriptions
+from core.gpt_schema import _ensure_operation_ids, _truncate_descriptions, generate_gpt_schema
 
 
 def _make_sample_schema():
     """Create a minimal OpenAPI schema for testing."""
     return {
         "openapi": "3.1.0",
-        "info": {
-            "title": "NGINX Manager API",
-            "description": "A" * 600,
-            "version": "0.1.0"
-        },
+        "info": {"title": "NGINX Manager API", "description": "A" * 600, "version": "0.1.0"},
         "paths": {
             "/sites/": {
                 "get": {
@@ -23,15 +17,15 @@ def _make_sample_schema():
                     "description": "List all sites" + " with details" * 50,
                     "operationId": "list_sites",
                     "tags": ["Site Configuration"],
-                    "responses": {"200": {"description": "OK"}}
+                    "responses": {"200": {"description": "OK"}},
                 },
                 "post": {
                     "summary": "Create Site",
                     "description": "Create a new site",
                     "operationId": "create_site",
                     "tags": ["Site Configuration"],
-                    "responses": {"201": {"description": "Created"}}
-                }
+                    "responses": {"201": {"description": "Created"}},
+                },
             },
             "/nginx/reload": {
                 "post": {
@@ -39,7 +33,7 @@ def _make_sample_schema():
                     "description": "Gracefully reload",
                     "operationId": "reload_nginx",
                     "tags": ["NGINX Control"],
-                    "responses": {"200": {"description": "OK"}}
+                    "responses": {"200": {"description": "OK"}},
                 }
             },
             "/events/": {
@@ -48,15 +42,11 @@ def _make_sample_schema():
                     "description": "List audit events",
                     "operationId": "list_events",
                     "tags": ["Events"],
-                    "responses": {"200": {"description": "OK"}}
+                    "responses": {"200": {"description": "OK"}},
                 }
             },
             "/docs": {
-                "get": {
-                    "summary": "Swagger Docs",
-                    "tags": ["Docs"],
-                    "responses": {"200": {"description": "OK"}}
-                }
+                "get": {"summary": "Swagger Docs", "tags": ["Docs"], "responses": {"200": {"description": "OK"}}}
             },
             "/workflows/setup-site": {
                 "post": {
@@ -64,15 +54,11 @@ def _make_sample_schema():
                     "description": "Compound workflow",
                     "operationId": "setup_site_workflow",
                     "tags": ["Agent Workflows"],
-                    "responses": {"200": {"description": "OK"}}
+                    "responses": {"200": {"description": "OK"}},
                 }
-            }
+            },
         },
-        "components": {
-            "schemas": {
-                "SiteConfig": {"type": "object"}
-            }
-        }
+        "components": {"schemas": {"SiteConfig": {"type": "object"}}},
     }
 
 
@@ -80,10 +66,7 @@ class TestGenerateGptSchema:
     """Tests for generate_gpt_schema function."""
 
     def test_servers_array_set(self):
-        schema = generate_gpt_schema(
-            _make_sample_schema(),
-            server_url="https://myserver.com:8000"
-        )
+        schema = generate_gpt_schema(_make_sample_schema(), server_url="https://myserver.com:8000")
         assert schema["servers"] == [{"url": "https://myserver.com:8000"}]
 
     def test_security_scheme_added(self):
@@ -100,18 +83,12 @@ class TestGenerateGptSchema:
         assert "/docs" not in schema["paths"]
 
     def test_custom_paths_excluded(self):
-        schema = generate_gpt_schema(
-            _make_sample_schema(),
-            exclude_paths=["/events/"]
-        )
+        schema = generate_gpt_schema(_make_sample_schema(), exclude_paths=["/events/"])
         assert "/events/" not in schema["paths"]
         assert "/docs" not in schema["paths"]
 
     def test_tag_filtering(self):
-        schema = generate_gpt_schema(
-            _make_sample_schema(),
-            include_tags=["Site Configuration", "Agent Workflows"]
-        )
+        schema = generate_gpt_schema(_make_sample_schema(), include_tags=["Site Configuration", "Agent Workflows"])
         assert "/sites/" in schema["paths"]
         assert "/workflows/setup-site" in schema["paths"]
         assert "/nginx/reload" not in schema["paths"]
@@ -128,16 +105,16 @@ class TestGenerateGptSchema:
                         "summary": "Get",
                         "operationId": "get_mixed",
                         "tags": ["Included"],
-                        "responses": {"200": {"description": "OK"}}
+                        "responses": {"200": {"description": "OK"}},
                     },
                     "post": {
                         "summary": "Post",
                         "operationId": "post_mixed",
                         "tags": ["Excluded"],
-                        "responses": {"201": {"description": "Created"}}
-                    }
+                        "responses": {"201": {"description": "Created"}},
+                    },
                 }
-            }
+            },
         }
         schema = generate_gpt_schema(test_schema, include_tags=["Included"])
         assert "/mixed" in schema["paths"]
@@ -156,10 +133,7 @@ class TestGenerateGptSchema:
                     assert "operationId" in operation, f"Missing operationId for {method.upper()} {path}"
 
     def test_descriptions_truncated(self):
-        schema = generate_gpt_schema(
-            _make_sample_schema(),
-            max_description_length=100
-        )
+        schema = generate_gpt_schema(_make_sample_schema(), max_description_length=100)
         for path, methods in schema["paths"].items():
             for method, operation in methods.items():
                 if method in ("get", "post", "put", "delete", "patch"):
@@ -175,10 +149,7 @@ class TestGenerateGptSchema:
                     assert len(desc) <= 300, f"Description too long for {method.upper()} {path}: {len(desc)}"
 
     def test_top_level_description_truncated(self):
-        schema = generate_gpt_schema(
-            _make_sample_schema(),
-            max_description_length=100
-        )
+        schema = generate_gpt_schema(_make_sample_schema(), max_description_length=100)
         info_desc = schema["info"].get("description", "")
         assert len(info_desc) <= 100
 
@@ -200,45 +171,20 @@ class TestEnsureOperationIds:
     """Tests for _ensure_operation_ids helper."""
 
     def test_generates_ids_from_path(self):
-        schema = {
-            "paths": {
-                "/sites/{name}": {
-                    "get": {"summary": "Get site"},
-                    "delete": {"summary": "Delete site"}
-                }
-            }
-        }
+        schema = {"paths": {"/sites/{name}": {"get": {"summary": "Get site"}, "delete": {"summary": "Delete site"}}}}
         _ensure_operation_ids(schema)
         assert schema["paths"]["/sites/{name}"]["get"]["operationId"] == "get_sites_name"
         assert schema["paths"]["/sites/{name}"]["delete"]["operationId"] == "delete_sites_name"
 
     def test_preserves_existing_ids(self):
-        schema = {
-            "paths": {
-                "/sites/": {
-                    "get": {"summary": "List", "operationId": "custom_list_id"}
-                }
-            }
-        }
+        schema = {"paths": {"/sites/": {"get": {"summary": "List", "operationId": "custom_list_id"}}}}
         _ensure_operation_ids(schema)
         assert schema["paths"]["/sites/"]["get"]["operationId"] == "custom_list_id"
 
     def test_handles_duplicate_generated_ids(self):
-        schema = {
-            "paths": {
-                "/foo": {
-                    "get": {"summary": "A"}
-                },
-                "/foo/": {
-                    "get": {"summary": "B"}
-                }
-            }
-        }
+        schema = {"paths": {"/foo": {"get": {"summary": "A"}}, "/foo/": {"get": {"summary": "B"}}}}
         _ensure_operation_ids(schema)
-        ids = [
-            schema["paths"]["/foo"]["get"]["operationId"],
-            schema["paths"]["/foo/"]["get"]["operationId"]
-        ]
+        ids = [schema["paths"]["/foo"]["get"]["operationId"], schema["paths"]["/foo/"]["get"]["operationId"]]
         # All IDs should be unique
         assert len(set(ids)) == 2
 
@@ -247,37 +193,19 @@ class TestTruncateDescriptions:
     """Tests for _truncate_descriptions helper."""
 
     def test_short_descriptions_unchanged(self):
-        schema = {
-            "paths": {
-                "/test": {
-                    "get": {"description": "Short desc"}
-                }
-            }
-        }
+        schema = {"paths": {"/test": {"get": {"description": "Short desc"}}}}
         _truncate_descriptions(schema, max_length=500)
         assert schema["paths"]["/test"]["get"]["description"] == "Short desc"
 
     def test_long_descriptions_truncated(self):
         long_desc = "A" * 600
-        schema = {
-            "paths": {
-                "/test": {
-                    "get": {"description": long_desc}
-                }
-            }
-        }
+        schema = {"paths": {"/test": {"get": {"description": long_desc}}}}
         _truncate_descriptions(schema, max_length=100)
         desc = schema["paths"]["/test"]["get"]["description"]
         assert len(desc) == 100
         assert desc.endswith("...")
 
     def test_missing_description_ok(self):
-        schema = {
-            "paths": {
-                "/test": {
-                    "get": {"summary": "No description"}
-                }
-            }
-        }
+        schema = {"paths": {"/test": {"get": {"summary": "No description"}}}}
         _truncate_descriptions(schema, max_length=100)
         assert "description" not in schema["paths"]["/test"]["get"]

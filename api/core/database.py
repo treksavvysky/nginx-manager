@@ -5,11 +5,11 @@ Provides async database operations using aiosqlite for
 storing transaction history and event logs.
 """
 
-import logging
-from pathlib import Path
-from typing import Optional, List, Dict, Any
-from contextlib import asynccontextmanager
 import json
+import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
@@ -178,9 +178,9 @@ CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
 class Database:
     """Async SQLite database manager."""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: str | None = None):
         self.db_path = db_path or settings.transaction_db_path
-        self._connection: Optional[aiosqlite.Connection] = None
+        self._connection: aiosqlite.Connection | None = None
 
     async def initialize(self) -> None:
         """Initialize database and create tables if needed."""
@@ -228,22 +228,14 @@ class Database:
         finally:
             await conn.close()
 
-    async def execute(
-        self,
-        query: str,
-        params: tuple = ()
-    ) -> aiosqlite.Cursor:
+    async def execute(self, query: str, params: tuple = ()) -> aiosqlite.Cursor:
         """Execute a query and return the cursor."""
         async with self.connection() as db:
             cursor = await db.execute(query, params)
             await db.commit()
             return cursor
 
-    async def fetch_one(
-        self,
-        query: str,
-        params: tuple = ()
-    ) -> Optional[Dict[str, Any]]:
+    async def fetch_one(self, query: str, params: tuple = ()) -> dict[str, Any] | None:
         """Execute a query and fetch one result."""
         async with self.connection() as db:
             cursor = await db.execute(query, params)
@@ -252,22 +244,14 @@ class Database:
                 return dict(row)
             return None
 
-    async def fetch_all(
-        self,
-        query: str,
-        params: tuple = ()
-    ) -> List[Dict[str, Any]]:
+    async def fetch_all(self, query: str, params: tuple = ()) -> list[dict[str, Any]]:
         """Execute a query and fetch all results."""
         async with self.connection() as db:
             cursor = await db.execute(query, params)
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
-    async def insert(
-        self,
-        table: str,
-        data: Dict[str, Any]
-    ) -> str:
+    async def insert(self, table: str, data: dict[str, Any]) -> str:
         """Insert a row and return the id."""
         columns = list(data.keys())
         placeholders = ", ".join(["?" for _ in columns])
@@ -282,29 +266,18 @@ class Database:
 
         return data.get("id", "")
 
-    async def update(
-        self,
-        table: str,
-        id_value: str,
-        data: Dict[str, Any],
-        id_column: str = "id"
-    ) -> bool:
+    async def update(self, table: str, id_value: str, data: dict[str, Any], id_column: str = "id") -> bool:
         """Update a row by id."""
-        set_clause = ", ".join([f"{k} = ?" for k in data.keys()])
+        set_clause = ", ".join([f"{k} = ?" for k in data])
         query = f"UPDATE {table} SET {set_clause} WHERE {id_column} = ?"
-        values = tuple(data.values()) + (id_value,)
+        values = (*tuple(data.values()), id_value)
 
         async with self.connection() as db:
             cursor = await db.execute(query, values)
             await db.commit()
             return cursor.rowcount > 0
 
-    async def delete(
-        self,
-        table: str,
-        id_value: str,
-        id_column: str = "id"
-    ) -> bool:
+    async def delete(self, table: str, id_value: str, id_column: str = "id") -> bool:
         """Delete a row by id."""
         query = f"DELETE FROM {table} WHERE {id_column} = ?"
 
@@ -313,12 +286,7 @@ class Database:
             await db.commit()
             return cursor.rowcount > 0
 
-    async def count(
-        self,
-        table: str,
-        where_clause: str = "",
-        params: tuple = ()
-    ) -> int:
+    async def count(self, table: str, where_clause: str = "", params: tuple = ()) -> int:
         """Count rows in a table."""
         query = f"SELECT COUNT(*) as count FROM {table}"
         if where_clause:
@@ -327,12 +295,7 @@ class Database:
         result = await self.fetch_one(query, params)
         return result["count"] if result else 0
 
-    async def delete_older_than(
-        self,
-        table: str,
-        timestamp_column: str,
-        days: int
-    ) -> int:
+    async def delete_older_than(self, table: str, timestamp_column: str, days: int) -> int:
         """Delete rows older than specified days. Returns count deleted."""
         query = f"""
             DELETE FROM {table}
@@ -345,14 +308,14 @@ class Database:
             return cursor.rowcount
 
 
-def serialize_json(data: Optional[Dict[str, Any]]) -> Optional[str]:
+def serialize_json(data: dict[str, Any] | None) -> str | None:
     """Serialize a dict to JSON string for storage."""
     if data is None:
         return None
     return json.dumps(data)
 
 
-def deserialize_json(data: Optional[str]) -> Optional[Dict[str, Any]]:
+def deserialize_json(data: str | None) -> dict[str, Any] | None:
     """Deserialize a JSON string from storage."""
     if data is None:
         return None
@@ -360,7 +323,7 @@ def deserialize_json(data: Optional[str]) -> Optional[Dict[str, Any]]:
 
 
 # Singleton database instance
-_db_instance: Optional[Database] = None
+_db_instance: Database | None = None
 
 
 def get_database() -> Database:

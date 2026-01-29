@@ -4,12 +4,13 @@ Unit tests for auth service.
 Tests API key creation, validation, and revocation.
 """
 
-import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
 from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from core.auth_service import AuthService, KEY_PREFIX
-from models.auth import Role, AuthContext
+import pytest
+
+from core.auth_service import KEY_PREFIX, AuthService
+from models.auth import Role
 
 
 class TestAuthServiceKeyGeneration:
@@ -49,7 +50,7 @@ class TestAuthServiceCRUD:
         mock_db = MagicMock()
         mock_db.insert = AsyncMock(return_value="key-123")
 
-        with patch('core.auth_service.get_database', return_value=mock_db):
+        with patch("core.auth_service.get_database", return_value=mock_db):
             service = AuthService()
             api_key, plaintext = await service.create_api_key(
                 name="test-key",
@@ -69,16 +70,18 @@ class TestAuthServiceCRUD:
         key_hash = AuthService._hash_key(plaintext)
 
         mock_db = MagicMock()
-        mock_db.fetch_one = AsyncMock(return_value={
-            "id": "key-123",
-            "key_hash": key_hash,
-            "role": "operator",
-            "is_active": True,
-            "expires_at": None,
-        })
+        mock_db.fetch_one = AsyncMock(
+            return_value={
+                "id": "key-123",
+                "key_hash": key_hash,
+                "role": "operator",
+                "is_active": True,
+                "expires_at": None,
+            }
+        )
         mock_db.execute = AsyncMock()
 
-        with patch('core.auth_service.get_database', return_value=mock_db):
+        with patch("core.auth_service.get_database", return_value=mock_db):
             service = AuthService()
             ctx = await service.validate_api_key(plaintext)
 
@@ -93,7 +96,7 @@ class TestAuthServiceCRUD:
         mock_db = MagicMock()
         mock_db.fetch_one = AsyncMock(return_value=None)
 
-        with patch('core.auth_service.get_database', return_value=mock_db):
+        with patch("core.auth_service.get_database", return_value=mock_db):
             service = AuthService()
             ctx = await service.validate_api_key("ngx_invalid_key")
 
@@ -104,7 +107,7 @@ class TestAuthServiceCRUD:
         """Test validating a key without prefix returns None."""
         mock_db = MagicMock()
 
-        with patch('core.auth_service.get_database', return_value=mock_db):
+        with patch("core.auth_service.get_database", return_value=mock_db):
             service = AuthService()
             ctx = await service.validate_api_key("no_prefix_key")
 
@@ -118,15 +121,17 @@ class TestAuthServiceCRUD:
         key_hash = AuthService._hash_key(plaintext)
 
         mock_db = MagicMock()
-        mock_db.fetch_one = AsyncMock(return_value={
-            "id": "key-123",
-            "key_hash": key_hash,
-            "role": "operator",
-            "is_active": False,
-            "expires_at": None,
-        })
+        mock_db.fetch_one = AsyncMock(
+            return_value={
+                "id": "key-123",
+                "key_hash": key_hash,
+                "role": "operator",
+                "is_active": False,
+                "expires_at": None,
+            }
+        )
 
-        with patch('core.auth_service.get_database', return_value=mock_db):
+        with patch("core.auth_service.get_database", return_value=mock_db):
             service = AuthService()
             ctx = await service.validate_api_key(plaintext)
 
@@ -139,15 +144,17 @@ class TestAuthServiceCRUD:
         key_hash = AuthService._hash_key(plaintext)
 
         mock_db = MagicMock()
-        mock_db.fetch_one = AsyncMock(return_value={
-            "id": "key-123",
-            "key_hash": key_hash,
-            "role": "operator",
-            "is_active": True,
-            "expires_at": (datetime.utcnow() - timedelta(hours=1)).isoformat(),
-        })
+        mock_db.fetch_one = AsyncMock(
+            return_value={
+                "id": "key-123",
+                "key_hash": key_hash,
+                "role": "operator",
+                "is_active": True,
+                "expires_at": (datetime.utcnow() - timedelta(hours=1)).isoformat(),
+            }
+        )
 
-        with patch('core.auth_service.get_database', return_value=mock_db):
+        with patch("core.auth_service.get_database", return_value=mock_db):
             service = AuthService()
             ctx = await service.validate_api_key(plaintext)
 
@@ -159,14 +166,12 @@ class TestAuthServiceCRUD:
         mock_db = MagicMock()
         mock_db.update = AsyncMock(return_value=True)
 
-        with patch('core.auth_service.get_database', return_value=mock_db):
+        with patch("core.auth_service.get_database", return_value=mock_db):
             service = AuthService()
             result = await service.revoke_api_key("key-123")
 
         assert result is True
-        mock_db.update.assert_called_once_with(
-            "api_keys", "key-123", {"is_active": False}
-        )
+        mock_db.update.assert_called_once_with("api_keys", "key-123", {"is_active": False})
 
     @pytest.mark.asyncio
     async def test_has_any_keys_empty(self):
@@ -174,7 +179,7 @@ class TestAuthServiceCRUD:
         mock_db = MagicMock()
         mock_db.count = AsyncMock(return_value=0)
 
-        with patch('core.auth_service.get_database', return_value=mock_db):
+        with patch("core.auth_service.get_database", return_value=mock_db):
             service = AuthService()
             assert await service.has_any_keys() is False
 
@@ -184,6 +189,6 @@ class TestAuthServiceCRUD:
         mock_db = MagicMock()
         mock_db.count = AsyncMock(return_value=3)
 
-        with patch('core.auth_service.get_database', return_value=mock_db):
+        with patch("core.auth_service.get_database", return_value=mock_db):
             service = AuthService()
             assert await service.has_any_keys() is True

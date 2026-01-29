@@ -5,38 +5,34 @@ REST API endpoints for managing SSL certificates including
 Let's Encrypt automation and custom certificate uploads.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import List, Optional, Union
 import logging
+from typing import Union
 
-from core.auth_dependency import get_current_auth, require_role
-from models.auth import AuthContext, Role
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from core.auth_dependency import require_role
 from core.cert_manager import (
-    get_cert_manager,
-    CertManager,
     CertificateError,
-    CertificateNotFoundError,
     CertificateValidationError,
-    DNSError
+    DNSError,
+    get_cert_manager,
 )
-from core.transaction_context import transactional_operation
 from core.context_helpers import (
-    get_cert_request_suggestions,
     get_cert_expiry_warnings,
     get_cert_renewal_suggestions,
+    get_cert_request_suggestions,
 )
 from core.docker_service import docker_service
+from core.transaction_context import transactional_operation
+from models.auth import AuthContext, Role
 from models.certificate import (
-    Certificate,
-    CertificateStatus,
-    CertificateType,
-    CertificateRequestCreate,
-    CertificateUploadRequest,
-    CertificateRenewRequest,
-    CertificateResponse,
-    CertificateMutationResponse,
     CertificateDryRunResult,
     CertificateListResponse,
+    CertificateMutationResponse,
+    CertificateRequestCreate,
+    CertificateResponse,
+    CertificateStatus,
+    CertificateUploadRequest,
     SSLDiagnosticResult,
 )
 from models.transaction import OperationType
@@ -70,28 +66,20 @@ router = APIRouter(prefix="/certificates", tags=["SSL Certificates"])
                 "application/json": {
                     "example": {
                         "certificates": [
-                            {
-                                "id": "cert-abc123",
-                                "domain": "example.com",
-                                "status": "valid",
-                                "days_until_expiry": 45
-                            }
+                            {"id": "cert-abc123", "domain": "example.com", "status": "valid", "days_until_expiry": 45}
                         ],
                         "total": 1,
                         "valid_count": 1,
                         "expiring_soon_count": 0,
-                        "expired_count": 0
+                        "expired_count": 0,
                     }
                 }
-            }
+            },
         }
-    }
+    },
 )
 async def list_certificates(
-    status: Optional[CertificateStatus] = Query(
-        None,
-        description="Filter by certificate status"
-    ),
+    status: CertificateStatus | None = Query(None, description="Filter by certificate status"),
     auth: AuthContext = Depends(require_role(Role.VIEWER)),
 ) -> CertificateListResponse:
     """
@@ -111,10 +99,7 @@ async def list_certificates(
             # Generate warnings for this certificate
             warnings = get_cert_expiry_warnings(cert)
 
-            response = CertificateResponse.from_certificate(
-                cert,
-                warnings=warnings
-            )
+            response = CertificateResponse.from_certificate(cert, warnings=warnings)
             responses.append(response)
 
             # Count by status
@@ -128,18 +113,22 @@ async def list_certificates(
         # Global suggestions
         suggestions = []
         if expiring_soon_count > 0:
-            suggestions.append({
-                "action": f"Renew {expiring_soon_count} certificate(s) expiring soon",
-                "reason": "Certificates should be renewed before they expire",
-                "endpoint": "POST /certificates/{domain}/renew",
-                "priority": "high"
-            })
+            suggestions.append(
+                {
+                    "action": f"Renew {expiring_soon_count} certificate(s) expiring soon",
+                    "reason": "Certificates should be renewed before they expire",
+                    "endpoint": "POST /certificates/{domain}/renew",
+                    "priority": "high",
+                }
+            )
         if expired_count > 0:
-            suggestions.append({
-                "action": f"Address {expired_count} expired certificate(s)",
-                "reason": "Expired certificates will cause browser warnings",
-                "priority": "critical"
-            })
+            suggestions.append(
+                {
+                    "action": f"Address {expired_count} expired certificate(s)",
+                    "reason": "Expired certificates will cause browser warnings",
+                    "priority": "critical",
+                }
+            )
 
         return CertificateListResponse(
             certificates=responses,
@@ -147,15 +136,12 @@ async def list_certificates(
             valid_count=valid_count,
             expiring_soon_count=expiring_soon_count,
             expired_count=expired_count,
-            suggestions=suggestions
+            suggestions=suggestions,
         )
 
     except Exception as e:
         logger.error(f"Error listing certificates: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to list certificates: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to list certificates: {e!s}")
 
 
 @router.get(
@@ -175,10 +161,7 @@ async def list_certificates(
     - Warnings if certificate is expiring soon
     - Suggestions for next actions
     """,
-    responses={
-        200: {"description": "Certificate details"},
-        404: {"description": "Certificate not found"}
-    }
+    responses={200: {"description": "Certificate details"}, 404: {"description": "Certificate not found"}},
 )
 async def get_certificate(domain: str, auth: AuthContext = Depends(require_role(Role.VIEWER))) -> CertificateResponse:
     """
@@ -189,44 +172,38 @@ async def get_certificate(domain: str, auth: AuthContext = Depends(require_role(
         cert = await cert_manager.get_certificate(domain)
 
         if not cert:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Certificate not found for domain: {domain}"
-            )
+            raise HTTPException(status_code=404, detail=f"Certificate not found for domain: {domain}")
 
         # Generate context
         warnings = get_cert_expiry_warnings(cert)
         suggestions = []
 
         if cert.status == CertificateStatus.EXPIRING_SOON:
-            suggestions.append({
-                "action": "Renew certificate",
-                "reason": f"Certificate expires in {cert.days_until_expiry} days",
-                "endpoint": f"POST /certificates/{domain}/renew",
-                "priority": "high"
-            })
+            suggestions.append(
+                {
+                    "action": "Renew certificate",
+                    "reason": f"Certificate expires in {cert.days_until_expiry} days",
+                    "endpoint": f"POST /certificates/{domain}/renew",
+                    "priority": "high",
+                }
+            )
         elif cert.status == CertificateStatus.EXPIRED:
-            suggestions.append({
-                "action": "Request new certificate",
-                "reason": "Certificate has expired",
-                "endpoint": "POST /certificates/",
-                "priority": "critical"
-            })
+            suggestions.append(
+                {
+                    "action": "Request new certificate",
+                    "reason": "Certificate has expired",
+                    "endpoint": "POST /certificates/",
+                    "priority": "critical",
+                }
+            )
 
-        return CertificateResponse.from_certificate(
-            cert,
-            suggestions=suggestions,
-            warnings=warnings
-        )
+        return CertificateResponse.from_certificate(cert, suggestions=suggestions, warnings=warnings)
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting certificate for {domain}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get certificate: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get certificate: {e!s}")
 
 
 @router.post(
@@ -261,17 +238,14 @@ async def get_certificate(domain: str, auth: AuthContext = Depends(require_role(
         201: {"description": "Certificate requested successfully"},
         400: {"description": "Invalid request or domain validation failed"},
         409: {"description": "Certificate already exists for domain"},
-        500: {"description": "Certificate request failed"}
-    }
+        500: {"description": "Certificate request failed"},
+    },
 )
 async def request_certificate(
     request: CertificateRequestCreate,
-    dry_run: bool = Query(
-        default=False,
-        description="Validate prerequisites without requesting certificate"
-    ),
+    dry_run: bool = Query(default=False, description="Validate prerequisites without requesting certificate"),
     auth: AuthContext = Depends(require_role(Role.OPERATOR)),
-) -> Union[CertificateMutationResponse, CertificateDryRunResult]:
+) -> CertificateMutationResponse | CertificateDryRunResult:
     """
     Request a new SSL certificate from Let's Encrypt.
     """
@@ -291,28 +265,27 @@ async def request_certificate(
                 nginx_config_valid=True,
                 sites_affected=[],
                 files_to_create=[],
-                warnings=[{
-                    "code": "certificate_exists",
-                    "message": f"Valid certificate already exists for {request.domain}",
-                    "suggestion": "Use renewal endpoint or delete existing certificate first"
-                }]
+                warnings=[
+                    {
+                        "code": "certificate_exists",
+                        "message": f"Valid certificate already exists for {request.domain}",
+                        "suggestion": "Use renewal endpoint or delete existing certificate first",
+                    }
+                ],
             )
         raise HTTPException(
             status_code=409,
             detail={
                 "error": "certificate_exists",
                 "message": f"Certificate already exists for {request.domain}",
-                "suggestion": "Use POST /certificates/{domain}/renew to renew or DELETE to remove"
-            }
+                "suggestion": "Use POST /certificates/{domain}/renew to renew or DELETE to remove",
+            },
         )
 
     if dry_run:
         try:
             result = await cert_manager.request_certificate(
-                domain=request.domain,
-                alt_names=request.alt_names,
-                auto_renew=request.auto_renew,
-                dry_run=True
+                domain=request.domain, alt_names=request.alt_names, auto_renew=request.auto_renew, dry_run=True
             )
             return result
         except Exception as e:
@@ -326,10 +299,7 @@ async def request_certificate(
                 nginx_config_valid=False,
                 sites_affected=[],
                 files_to_create=[],
-                warnings=[{
-                    "code": "validation_failed",
-                    "message": str(e)
-                }]
+                warnings=[{"code": "validation_failed", "message": str(e)}],
             )
 
     # Actual certificate request with transaction
@@ -337,25 +307,21 @@ async def request_certificate(
         operation=OperationType.SSL_INSTALL,
         resource_type="certificate",
         resource_id=request.domain,
-        request_data={
-            "domain": request.domain,
-            "alt_names": request.alt_names,
-            "auto_renew": request.auto_renew
-        }
+        request_data={"domain": request.domain, "alt_names": request.alt_names, "auto_renew": request.auto_renew},
     ) as ctx:
         try:
             cert = await cert_manager.request_certificate(
-                domain=request.domain,
-                alt_names=request.alt_names,
-                auto_renew=request.auto_renew
+                domain=request.domain, alt_names=request.alt_names, auto_renew=request.auto_renew
             )
 
             # Set transaction result
-            ctx.set_result({
-                "certificate_id": cert.id,
-                "status": cert.status.value,
-                "expires": cert.not_after.isoformat() if cert.not_after else None
-            })
+            ctx.set_result(
+                {
+                    "certificate_id": cert.id,
+                    "status": cert.status.value,
+                    "expires": cert.not_after.isoformat() if cert.not_after else None,
+                }
+            )
             ctx.set_nginx_validated(True)
 
             # Reload NGINX if requested
@@ -372,7 +338,7 @@ async def request_certificate(
             suggestions = get_cert_request_suggestions(
                 domain=request.domain,
                 reloaded=reloaded,
-                sites_using_cert=[]  # TODO: detect sites
+                sites_using_cert=[],  # TODO: detect sites
             )
 
             return CertificateMutationResponse(
@@ -384,18 +350,13 @@ async def request_certificate(
                 reload_required=True,
                 reloaded=reloaded,
                 suggestions=suggestions,
-                warnings=[]
+                warnings=[],
             )
 
         except DNSError as e:
             raise HTTPException(
                 status_code=400,
-                detail={
-                    "error": "dns_error",
-                    "message": e.message,
-                    "domain": e.domain,
-                    "suggestion": e.suggestion
-                }
+                detail={"error": "dns_error", "message": e.message, "domain": e.domain, "suggestion": e.suggestion},
             )
         except CertificateError as e:
             raise HTTPException(
@@ -404,8 +365,8 @@ async def request_certificate(
                     "error": "certificate_error",
                     "message": e.message,
                     "domain": e.domain,
-                    "suggestion": e.suggestion
-                }
+                    "suggestion": e.suggestion,
+                },
             )
 
 
@@ -438,17 +399,14 @@ async def request_certificate(
     responses={
         201: {"description": "Certificate uploaded successfully"},
         400: {"description": "Invalid certificate or key format"},
-        500: {"description": "Upload failed"}
-    }
+        500: {"description": "Upload failed"},
+    },
 )
 async def upload_certificate(
     request: CertificateUploadRequest,
-    dry_run: bool = Query(
-        default=False,
-        description="Validate certificate without installing"
-    ),
+    dry_run: bool = Query(default=False, description="Validate certificate without installing"),
     auth: AuthContext = Depends(require_role(Role.OPERATOR)),
-) -> Union[CertificateMutationResponse, CertificateDryRunResult]:
+) -> CertificateMutationResponse | CertificateDryRunResult:
     """
     Upload and install a custom SSL certificate.
     """
@@ -461,7 +419,7 @@ async def upload_certificate(
                 cert_pem=request.certificate_pem,
                 key_pem=request.private_key_pem,
                 chain_pem=request.chain_pem,
-                dry_run=True
+                dry_run=True,
             )
             return result
         except CertificateValidationError as e:
@@ -475,11 +433,7 @@ async def upload_certificate(
                 nginx_config_valid=False,
                 sites_affected=[],
                 files_to_create=[],
-                warnings=[{
-                    "code": "validation_failed",
-                    "message": e.message,
-                    "suggestion": e.suggestion
-                }]
+                warnings=[{"code": "validation_failed", "message": e.message, "suggestion": e.suggestion}],
             )
 
     # Actual upload with transaction
@@ -487,21 +441,23 @@ async def upload_certificate(
         operation=OperationType.SSL_INSTALL,
         resource_type="certificate",
         resource_id=request.domain,
-        request_data={"domain": request.domain, "type": "custom"}
+        request_data={"domain": request.domain, "type": "custom"},
     ) as ctx:
         try:
             cert = await cert_manager.upload_custom_certificate(
                 domain=request.domain,
                 cert_pem=request.certificate_pem,
                 key_pem=request.private_key_pem,
-                chain_pem=request.chain_pem
+                chain_pem=request.chain_pem,
             )
 
-            ctx.set_result({
-                "certificate_id": cert.id,
-                "status": cert.status.value,
-                "expires": cert.not_after.isoformat() if cert.not_after else None
-            })
+            ctx.set_result(
+                {
+                    "certificate_id": cert.id,
+                    "status": cert.status.value,
+                    "expires": cert.not_after.isoformat() if cert.not_after else None,
+                }
+            )
             ctx.set_nginx_validated(True)
 
             # Reload if requested
@@ -522,22 +478,13 @@ async def upload_certificate(
                 certificate=CertificateResponse.from_certificate(cert),
                 reload_required=True,
                 reloaded=reloaded,
-                suggestions=get_cert_request_suggestions(
-                    domain=request.domain,
-                    reloaded=reloaded,
-                    sites_using_cert=[]
-                ),
-                warnings=[]
+                suggestions=get_cert_request_suggestions(domain=request.domain, reloaded=reloaded, sites_using_cert=[]),
+                warnings=[],
             )
 
         except CertificateValidationError as e:
             raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "validation_error",
-                    "message": e.message,
-                    "suggestion": e.suggestion
-                }
+                status_code=400, detail={"error": "validation_error", "message": e.message, "suggestion": e.suggestion}
             )
 
 
@@ -561,25 +508,16 @@ async def upload_certificate(
         200: {"description": "Certificate renewed successfully"},
         400: {"description": "Cannot renew (custom cert or not expiring)"},
         404: {"description": "Certificate not found"},
-        500: {"description": "Renewal failed"}
-    }
+        500: {"description": "Renewal failed"},
+    },
 )
 async def renew_certificate(
     domain: str,
-    force: bool = Query(
-        default=False,
-        description="Force renewal even if not expiring soon"
-    ),
-    auto_reload: bool = Query(
-        default=False,
-        description="Automatically reload NGINX after renewal"
-    ),
-    dry_run: bool = Query(
-        default=False,
-        description="Check if renewal needed without renewing"
-    ),
+    force: bool = Query(default=False, description="Force renewal even if not expiring soon"),
+    auto_reload: bool = Query(default=False, description="Automatically reload NGINX after renewal"),
+    dry_run: bool = Query(default=False, description="Check if renewal needed without renewing"),
     auth: AuthContext = Depends(require_role(Role.OPERATOR)),
-) -> Union[CertificateMutationResponse, CertificateDryRunResult]:
+) -> CertificateMutationResponse | CertificateDryRunResult:
     """
     Renew an existing certificate.
     """
@@ -588,17 +526,10 @@ async def renew_certificate(
     # Check certificate exists
     cert = await cert_manager.get_certificate(domain)
     if not cert:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Certificate not found for domain: {domain}"
-        )
+        raise HTTPException(status_code=404, detail=f"Certificate not found for domain: {domain}")
 
     if dry_run:
-        result = await cert_manager.renew_certificate(
-            domain=domain,
-            force=force,
-            dry_run=True
-        )
+        result = await cert_manager.renew_certificate(domain=domain, force=force, dry_run=True)
         return result
 
     # Actual renewal with transaction
@@ -606,19 +537,18 @@ async def renew_certificate(
         operation=OperationType.SSL_RENEW,
         resource_type="certificate",
         resource_id=domain,
-        request_data={"domain": domain, "force": force}
+        request_data={"domain": domain, "force": force},
     ) as ctx:
         try:
-            renewed_cert = await cert_manager.renew_certificate(
-                domain=domain,
-                force=force
-            )
+            renewed_cert = await cert_manager.renew_certificate(domain=domain, force=force)
 
-            ctx.set_result({
-                "certificate_id": renewed_cert.id,
-                "status": renewed_cert.status.value,
-                "expires": renewed_cert.not_after.isoformat() if renewed_cert.not_after else None
-            })
+            ctx.set_result(
+                {
+                    "certificate_id": renewed_cert.id,
+                    "status": renewed_cert.status.value,
+                    "expires": renewed_cert.not_after.isoformat() if renewed_cert.not_after else None,
+                }
+            )
             ctx.set_nginx_validated(True)
 
             # Reload if requested
@@ -640,17 +570,12 @@ async def renew_certificate(
                 reload_required=True,
                 reloaded=reloaded,
                 suggestions=get_cert_renewal_suggestions(domain),
-                warnings=[]
+                warnings=[],
             )
 
         except CertificateError as e:
             raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "renewal_error",
-                    "message": e.message,
-                    "suggestion": e.suggestion
-                }
+                status_code=400, detail={"error": "renewal_error", "message": e.message, "suggestion": e.suggestion}
             )
 
 
@@ -672,21 +597,15 @@ async def renew_certificate(
     responses={
         200: {"description": "Certificate revoked successfully"},
         404: {"description": "Certificate not found"},
-        500: {"description": "Revocation failed"}
-    }
+        500: {"description": "Revocation failed"},
+    },
 )
 async def revoke_certificate(
     domain: str,
-    auto_reload: bool = Query(
-        default=False,
-        description="Automatically reload NGINX after revocation"
-    ),
-    dry_run: bool = Query(
-        default=False,
-        description="Preview revocation without actually revoking"
-    ),
+    auto_reload: bool = Query(default=False, description="Automatically reload NGINX after revocation"),
+    dry_run: bool = Query(default=False, description="Preview revocation without actually revoking"),
     auth: AuthContext = Depends(require_role(Role.OPERATOR)),
-) -> Union[CertificateMutationResponse, CertificateDryRunResult]:
+) -> CertificateMutationResponse | CertificateDryRunResult:
     """
     Revoke and remove a certificate.
     """
@@ -695,16 +614,10 @@ async def revoke_certificate(
     # Check certificate exists
     cert = await cert_manager.get_certificate(domain)
     if not cert:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Certificate not found for domain: {domain}"
-        )
+        raise HTTPException(status_code=404, detail=f"Certificate not found for domain: {domain}")
 
     if dry_run:
-        result = await cert_manager.revoke_certificate(
-            domain=domain,
-            dry_run=True
-        )
+        result = await cert_manager.revoke_certificate(domain=domain, dry_run=True)
         return result
 
     # Actual revocation with transaction
@@ -712,7 +625,7 @@ async def revoke_certificate(
         operation=OperationType.SSL_REMOVE,
         resource_type="certificate",
         resource_id=domain,
-        request_data={"domain": domain}
+        request_data={"domain": domain},
     ) as ctx:
         try:
             await cert_manager.revoke_certificate(domain=domain)
@@ -738,26 +651,25 @@ async def revoke_certificate(
                 certificate=None,
                 reload_required=True,
                 reloaded=reloaded,
-                suggestions=[{
-                    "action": "Update site configuration",
-                    "reason": "Remove SSL directives or request new certificate",
-                    "priority": "high"
-                }],
-                warnings=[{
-                    "code": "ssl_removed",
-                    "message": "Sites using this certificate may show errors",
-                    "suggestion": "Update NGINX configuration to remove SSL or add new certificate"
-                }]
+                suggestions=[
+                    {
+                        "action": "Update site configuration",
+                        "reason": "Remove SSL directives or request new certificate",
+                        "priority": "high",
+                    }
+                ],
+                warnings=[
+                    {
+                        "code": "ssl_removed",
+                        "message": "Sites using this certificate may show errors",
+                        "suggestion": "Update NGINX configuration to remove SSL or add new certificate",
+                    }
+                ],
             )
 
         except CertificateError as e:
             raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": "revocation_error",
-                    "message": e.message,
-                    "suggestion": e.suggestion
-                }
+                status_code=500, detail={"error": "revocation_error", "message": e.message, "suggestion": e.suggestion}
             )
 
 
@@ -780,9 +692,7 @@ async def revoke_certificate(
     Run this before requesting a certificate to identify
     potential issues that could cause validation failures.
     """,
-    responses={
-        200: {"description": "Diagnostic results"}
-    }
+    responses={200: {"description": "Diagnostic results"}},
 )
 async def check_ssl(domain: str, auth: AuthContext = Depends(require_role(Role.VIEWER))) -> SSLDiagnosticResult:
     """

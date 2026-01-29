@@ -6,35 +6,29 @@ and revoking SSL certificates using the ACME service.
 """
 
 import asyncio
+import json
 import logging
 import re
 import socket
-import json
-from pathlib import Path
-from typing import Optional, List, Union
 from datetime import datetime
+from pathlib import Path
 
 from config import settings
-from core.database import get_database, serialize_json, deserialize_json
-from core.encryption_service import get_encryption_service
 from core.acme_service import (
-    get_acme_service,
     ACMEService,
-    ACMEError,
+    get_acme_service,
     parse_certificate,
-    validate_certificate_key_match
+    validate_certificate_key_match,
 )
+from core.database import get_database
 from core.docker_service import docker_service
+from core.encryption_service import get_encryption_service
 from models.certificate import (
     Certificate,
+    CertificateDryRunResult,
     CertificateStatus,
     CertificateType,
-    CertificateResponse,
-    CertificateMutationResponse,
-    CertificateDryRunResult,
-    CertificateListResponse,
     SSLDiagnosticResult,
-    ACMEAccount
 )
 
 logger = logging.getLogger(__name__)
@@ -52,16 +46,19 @@ class CertificateError(Exception):
 
 class CertificateNotFoundError(CertificateError):
     """Certificate not found."""
+
     pass
 
 
 class CertificateValidationError(CertificateError):
     """Certificate validation failed."""
+
     pass
 
 
 class DNSError(CertificateError):
     """DNS resolution error."""
+
     pass
 
 
@@ -83,11 +80,11 @@ class CertManager:
         """Load the most recent ACME account from the database."""
         directory_url = self.acme.directory_url
         row = await self.db.fetch_one(
-            "SELECT * FROM acme_accounts WHERE directory_url = ? ORDER BY created_at DESC LIMIT 1",
-            (directory_url,)
+            "SELECT * FROM acme_accounts WHERE directory_url = ? ORDER BY created_at DESC LIMIT 1", (directory_url,)
         )
         if row:
             from models.certificate import ACMEAccount
+
             # Decrypt the private key if it was encrypted at rest
             encryption = get_encryption_service()
             private_key_pem = encryption.decrypt_string(row["private_key_pem"])
@@ -96,13 +93,14 @@ class CertManager:
                 email=row["email"],
                 directory_url=row["directory_url"],
                 account_url=row["account_url"],
-                private_key_pem=private_key_pem
+                private_key_pem=private_key_pem,
             )
         return None
 
     async def _save_acme_account(self, account):
         """Save an ACME account to the database for reuse across restarts."""
         import uuid
+
         account_id = account.id or f"acme-{uuid.uuid4().hex[:12]}"
         # Encrypt the private key at rest if enabled
         encryption = get_encryption_service()
@@ -111,8 +109,7 @@ class CertManager:
             """INSERT OR REPLACE INTO acme_accounts
                (id, email, directory_url, account_url, private_key_pem)
                VALUES (?, ?, ?, ?, ?)""",
-            (account_id, account.email, account.directory_url,
-             account.account_url, encrypted_key_pem)
+            (account_id, account.email, account.directory_url, account.account_url, encrypted_key_pem),
         )
         logger.info(f"Saved ACME account {account_id} for {account.directory_url}")
 
@@ -126,7 +123,7 @@ class CertManager:
         cert_dir.mkdir(parents=True, exist_ok=True)
         return cert_dir
 
-    async def _find_site_config(self, domain: str) -> Optional[Path]:
+    async def _find_site_config(self, domain: str) -> Path | None:
         """Find the NGINX config file that serves a given domain."""
         conf_dir = Path(settings.nginx_conf_dir)
         if not conf_dir.exists():
@@ -198,7 +195,7 @@ class CertManager:
 
         # Validate with nginx -t
         try:
-            success, stdout, stderr = await docker_service.test_config()
+            success, _stdout, stderr = await docker_service.test_config()
             if not success:
                 config_path.write_text(original_content)
                 logger.error(f"ACME challenge injection failed validation: {stderr}")
@@ -217,12 +214,7 @@ class CertManager:
         logger.info(f"Injected ACME challenge routing into {config_path.name}")
         return True
 
-    async def _upgrade_site_to_ssl(
-        self,
-        domain: str,
-        ssl_cert_path: str,
-        ssl_key_path: str
-    ) -> bool:
+    async def _upgrade_site_to_ssl(self, domain: str, ssl_cert_path: str, ssl_key_path: str) -> bool:
         """
         Upgrade a site config to SSL after certificate issuance.
 
@@ -267,6 +259,7 @@ class CertManager:
 
         # Generate new SSL config
         from core.config_generator.generator import get_config_generator
+
         generator = get_config_generator()
         acme_challenge_dir = settings.acme_challenge_dir
 
@@ -277,7 +270,7 @@ class CertManager:
                     proxy_pass=proxy_pass,
                     ssl_cert_path=ssl_cert_path,
                     ssl_key_path=ssl_key_path,
-                    acme_challenge_dir=acme_challenge_dir
+                    acme_challenge_dir=acme_challenge_dir,
                 )
             else:
                 new_config = generator.generate_ssl_static_site(
@@ -286,7 +279,7 @@ class CertManager:
                     ssl_cert_path=ssl_cert_path,
                     ssl_key_path=ssl_key_path,
                     acme_challenge_dir=acme_challenge_dir,
-                    index_files=index_files
+                    index_files=index_files,
                 )
         except Exception as e:
             logger.error(f"Failed to generate SSL config for {domain}: {e}")
@@ -298,7 +291,7 @@ class CertManager:
 
         # Validate with nginx -t
         try:
-            success, stdout, stderr = await docker_service.test_config()
+            success, _stdout, stderr = await docker_service.test_config()
             if not success:
                 config_path.write_text(original_content)
                 logger.error(f"SSL config upgrade failed validation: {stderr}")
@@ -318,11 +311,7 @@ class CertManager:
         return True
 
     async def _save_certificate_files(
-        self,
-        domain: str,
-        cert_pem: bytes,
-        key_pem: bytes,
-        chain_pem: bytes = None
+        self, domain: str, cert_pem: bytes, key_pem: bytes, chain_pem: bytes = None
     ) -> dict:
         """
         Save certificate files to disk.
@@ -359,16 +348,16 @@ class CertManager:
             "fullchain_path": str(fullchain_path),
             "privkey_path": str(privkey_path),
             "cert_path": str(cert_path),
-            "chain_path": str(cert_dir / "chain.pem") if chain_pem else None
+            "chain_path": str(cert_dir / "chain.pem") if chain_pem else None,
         }
 
-    def _parse_datetime(self, value: str) -> Optional[datetime]:
+    def _parse_datetime(self, value: str) -> datetime | None:
         """Parse datetime string, normalizing to naive UTC."""
         if not value:
             return None
         # Handle ISO format with 'Z' suffix
-        if value.endswith('Z'):
-            value = value[:-1] + '+00:00'
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
         dt = datetime.fromisoformat(value)
         # Convert to naive UTC if timezone-aware
         if dt.tzinfo is not None:
@@ -397,7 +386,7 @@ class CertManager:
             last_renewal_error=row.get("last_renewal_error"),
             auto_renew=bool(row.get("auto_renew", True)),
             acme_account_id=row.get("acme_account_id"),
-            acme_order_url=row.get("acme_order_url")
+            acme_order_url=row.get("acme_order_url"),
         )
 
     async def _certificate_to_db(self, cert: Certificate) -> dict:
@@ -422,10 +411,10 @@ class CertManager:
             "last_renewal_error": cert.last_renewal_error,
             "auto_renew": cert.auto_renew,
             "acme_account_id": cert.acme_account_id,
-            "acme_order_url": cert.acme_order_url
+            "acme_order_url": cert.acme_order_url,
         }
 
-    async def check_domain_dns(self, domain: str) -> tuple[bool, List[str]]:
+    async def check_domain_dns(self, domain: str) -> tuple[bool, list[str]]:
         """
         Check if domain resolves in DNS.
 
@@ -438,14 +427,10 @@ class CertManager:
         except socket.gaierror:
             return False, []
 
-    async def check_port_accessible(
-        self,
-        domain: str,
-        port: int,
-        timeout: float = 5.0
-    ) -> bool:
+    async def check_port_accessible(self, domain: str, port: int, timeout: float = 5.0) -> bool:
         """Check if a port is accessible on the domain."""
         try:
+
             def check():
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(timeout)
@@ -457,30 +442,21 @@ class CertManager:
         except Exception:
             return False
 
-    async def get_certificate(self, domain: str) -> Optional[Certificate]:
+    async def get_certificate(self, domain: str) -> Certificate | None:
         """Get a certificate by domain."""
-        row = await self.db.fetch_one(
-            "SELECT * FROM certificates WHERE domain = ?",
-            (domain,)
-        )
+        row = await self.db.fetch_one("SELECT * FROM certificates WHERE domain = ?", (domain,))
         if row:
             return await self._db_to_certificate(row)
         return None
 
-    async def list_certificates(
-        self,
-        status: Optional[CertificateStatus] = None
-    ) -> List[Certificate]:
+    async def list_certificates(self, status: CertificateStatus | None = None) -> list[Certificate]:
         """List all certificates, optionally filtered by status."""
         if status:
             rows = await self.db.fetch_all(
-                "SELECT * FROM certificates WHERE status = ? ORDER BY domain",
-                (status.value,)
+                "SELECT * FROM certificates WHERE status = ? ORDER BY domain", (status.value,)
             )
         else:
-            rows = await self.db.fetch_all(
-                "SELECT * FROM certificates ORDER BY domain"
-            )
+            rows = await self.db.fetch_all("SELECT * FROM certificates ORDER BY domain")
 
         certs = []
         for row in rows:
@@ -495,7 +471,7 @@ class CertManager:
 
         return certs
 
-    async def get_expiring_soon(self, days: int = None) -> List[Certificate]:
+    async def get_expiring_soon(self, days: int = None) -> list[Certificate]:
         """Get certificates expiring within specified days."""
         if days is None:
             days = settings.cert_renewal_days
@@ -512,12 +488,8 @@ class CertManager:
         return expiring
 
     async def request_certificate(
-        self,
-        domain: str,
-        alt_names: List[str] = None,
-        auto_renew: bool = True,
-        dry_run: bool = False
-    ) -> Union[Certificate, CertificateDryRunResult]:
+        self, domain: str, alt_names: list[str] = None, auto_renew: bool = True, dry_run: bool = False
+    ) -> Certificate | CertificateDryRunResult:
         """
         Request a new certificate from Let's Encrypt.
 
@@ -534,7 +506,7 @@ class CertManager:
         warnings = []
 
         # Check DNS resolution
-        dns_ok, ips = await self.check_domain_dns(domain)
+        dns_ok, _ips = await self.check_domain_dns(domain)
 
         # Check port 80 accessibility
         port_80_ok = await self.check_port_accessible(domain, 80)
@@ -544,18 +516,22 @@ class CertManager:
             would_succeed = dns_ok and port_80_ok
 
             if not dns_ok:
-                warnings.append({
-                    "code": "dns_not_resolving",
-                    "message": f"Domain {domain} does not resolve in DNS",
-                    "suggestion": "Ensure DNS A record points to this server"
-                })
+                warnings.append(
+                    {
+                        "code": "dns_not_resolving",
+                        "message": f"Domain {domain} does not resolve in DNS",
+                        "suggestion": "Ensure DNS A record points to this server",
+                    }
+                )
 
             if not port_80_ok:
-                warnings.append({
-                    "code": "port_80_not_accessible",
-                    "message": "Port 80 is not accessible from the internet",
-                    "suggestion": "Ensure firewall allows inbound traffic on port 80"
-                })
+                warnings.append(
+                    {
+                        "code": "port_80_not_accessible",
+                        "message": "Port 80 is not accessible from the internet",
+                        "suggestion": "Ensure firewall allows inbound traffic on port 80",
+                    }
+                )
 
             return CertificateDryRunResult(
                 would_succeed=would_succeed,
@@ -568,9 +544,9 @@ class CertManager:
                 sites_affected=[],
                 files_to_create=[
                     str(self._get_cert_dir(domain) / "fullchain.pem"),
-                    str(self._get_cert_dir(domain) / "privkey.pem")
+                    str(self._get_cert_dir(domain) / "privkey.pem"),
                 ],
-                warnings=warnings
+                warnings=warnings,
             )
 
         # Actual certificate request
@@ -578,7 +554,7 @@ class CertManager:
             raise DNSError(
                 f"Domain {domain} does not resolve in DNS",
                 domain=domain,
-                suggestion="Ensure DNS A record points to this server"
+                suggestion="Ensure DNS A record points to this server",
             )
 
         # Check for existing certificate
@@ -588,7 +564,7 @@ class CertManager:
                 raise CertificateError(
                     f"Certificate already exists for {domain} with status {existing.status.value}",
                     domain=domain,
-                    suggestion="Use /certificates/{domain}/renew to renew an existing certificate"
+                    suggestion="Use /certificates/{domain}/renew to renew an existing certificate",
                 )
             # Remove old failed/revoked/expired certificate record
             await self.db.delete("certificates", domain, "domain")
@@ -599,7 +575,7 @@ class CertManager:
             alt_names=alt_names or [],
             certificate_type=CertificateType.LETSENCRYPT,
             status=CertificateStatus.PENDING,
-            auto_renew=auto_renew
+            auto_renew=auto_renew,
         )
 
         # Save to database
@@ -618,7 +594,7 @@ class CertManager:
 
             # Create order
             order = await self.acme.create_order(all_domains)
-            cert.acme_order_url = str(order.uri) if hasattr(order, 'uri') else None
+            cert.acme_order_url = str(order.uri) if hasattr(order, "uri") else None
 
             # Process each authorization
             # Track challenge tokens for cleanup
@@ -629,7 +605,7 @@ class CertManager:
                 challenge, key_authz = await self.acme.get_http_challenge(authz)
 
                 # Get token as string (using ACME library's encoding)
-                token_str = challenge.chall.encode('token')
+                token_str = challenge.chall.encode("token")
                 challenge_tokens.append(token_str)
 
                 # Setup challenge file
@@ -647,21 +623,13 @@ class CertManager:
                     await self.acme.cleanup_challenge(token_str)
 
             # Finalize and get certificate
-            cert_pem, key_pem, chain_pem = await self.acme.finalize_order(
-                validated_order,
-                all_domains
-            )
+            cert_pem, key_pem, chain_pem = await self.acme.finalize_order(validated_order, all_domains)
 
             # Parse certificate details
             cert_info = parse_certificate(cert_pem)
 
             # Save certificate files
-            paths = await self._save_certificate_files(
-                domain,
-                cert_pem,
-                key_pem,
-                chain_pem
-            )
+            paths = await self._save_certificate_files(domain, cert_pem, key_pem, chain_pem)
 
             # Update certificate record
             cert.status = CertificateStatus.VALID
@@ -676,17 +644,11 @@ class CertManager:
             cert.alt_names = cert_info.get("alt_names", alt_names or [])
 
             # Update database
-            await self.db.update(
-                "certificates",
-                cert.id,
-                await self._certificate_to_db(cert)
-            )
+            await self.db.update("certificates", cert.id, await self._certificate_to_db(cert))
 
             # Upgrade site config to SSL (HTTP redirect + HTTPS block)
             await self._upgrade_site_to_ssl(
-                domain,
-                ssl_cert_path=paths["fullchain_path"],
-                ssl_key_path=paths["privkey_path"]
+                domain, ssl_cert_path=paths["fullchain_path"], ssl_key_path=paths["privkey_path"]
             )
 
             logger.info(f"Successfully obtained certificate for {domain}")
@@ -702,26 +664,17 @@ class CertManager:
             # Update certificate status to failed
             cert.status = CertificateStatus.FAILED
             cert.last_renewal_error = str(e) or type(e).__name__
-            await self.db.update(
-                "certificates",
-                cert.id,
-                await self._certificate_to_db(cert)
-            )
+            await self.db.update("certificates", cert.id, await self._certificate_to_db(cert))
             error_detail = str(e) or repr(e)
             raise CertificateError(
                 f"Failed to obtain certificate: {error_detail}",
                 domain=domain,
-                suggestion="Check domain accessibility and DNS configuration"
+                suggestion="Check domain accessibility and DNS configuration",
             )
 
     async def upload_custom_certificate(
-        self,
-        domain: str,
-        cert_pem: str,
-        key_pem: str,
-        chain_pem: str = None,
-        dry_run: bool = False
-    ) -> Union[Certificate, CertificateDryRunResult]:
+        self, domain: str, cert_pem: str, key_pem: str, chain_pem: str = None, dry_run: bool = False
+    ) -> Certificate | CertificateDryRunResult:
         """
         Upload and install a custom SSL certificate.
 
@@ -732,9 +685,9 @@ class CertManager:
             chain_pem: PEM-encoded certificate chain (optional)
             dry_run: Only validate, don't actually install
         """
-        cert_bytes = cert_pem.encode('utf-8')
-        key_bytes = key_pem.encode('utf-8')
-        chain_bytes = chain_pem.encode('utf-8') if chain_pem else None
+        cert_bytes = cert_pem.encode("utf-8")
+        key_bytes = key_pem.encode("utf-8")
+        chain_bytes = chain_pem.encode("utf-8") if chain_pem else None
 
         warnings = []
 
@@ -745,7 +698,7 @@ class CertManager:
             raise CertificateValidationError(
                 f"Invalid certificate format: {e}",
                 domain=domain,
-                suggestion="Ensure certificate is in valid PEM format"
+                suggestion="Ensure certificate is in valid PEM format",
             )
 
         # Validate key matches certificate
@@ -754,7 +707,7 @@ class CertManager:
                 raise CertificateValidationError(
                     "Private key does not match certificate",
                     domain=domain,
-                    suggestion="Ensure private key corresponds to the certificate"
+                    suggestion="Ensure private key corresponds to the certificate",
                 )
         except Exception as e:
             if "does not match" in str(e):
@@ -762,16 +715,18 @@ class CertManager:
             raise CertificateValidationError(
                 f"Invalid private key format: {e}",
                 domain=domain,
-                suggestion="Ensure private key is in valid PEM format"
+                suggestion="Ensure private key is in valid PEM format",
             )
 
         # Check expiry
         if cert_info["not_after"] < datetime.utcnow():
-            warnings.append({
-                "code": "certificate_expired",
-                "message": "The certificate has already expired",
-                "suggestion": "Upload a valid, non-expired certificate"
-            })
+            warnings.append(
+                {
+                    "code": "certificate_expired",
+                    "message": "The certificate has already expired",
+                    "suggestion": "Upload a valid, non-expired certificate",
+                }
+            )
 
         if dry_run:
             return CertificateDryRunResult(
@@ -785,18 +740,13 @@ class CertManager:
                 sites_affected=[],
                 files_to_create=[
                     str(self._get_cert_dir(domain) / "fullchain.pem"),
-                    str(self._get_cert_dir(domain) / "privkey.pem")
+                    str(self._get_cert_dir(domain) / "privkey.pem"),
                 ],
-                warnings=warnings
+                warnings=warnings,
             )
 
         # Save certificate files
-        paths = await self._save_certificate_files(
-            domain,
-            cert_bytes,
-            key_bytes,
-            chain_bytes
-        )
+        paths = await self._save_certificate_files(domain, cert_bytes, key_bytes, chain_bytes)
 
         # Create or update certificate record
         existing = await self.get_certificate(domain)
@@ -815,15 +765,11 @@ class CertManager:
             not_before=cert_info["not_before"],
             not_after=cert_info["not_after"],
             fingerprint_sha256=cert_info["fingerprint_sha256"],
-            auto_renew=False  # Custom certs don't auto-renew
+            auto_renew=False,  # Custom certs don't auto-renew
         )
 
         if existing:
-            await self.db.update(
-                "certificates",
-                cert.id,
-                await self._certificate_to_db(cert)
-            )
+            await self.db.update("certificates", cert.id, await self._certificate_to_db(cert))
         else:
             await self.db.insert("certificates", await self._certificate_to_db(cert))
 
@@ -831,11 +777,8 @@ class CertManager:
         return cert
 
     async def renew_certificate(
-        self,
-        domain: str,
-        force: bool = False,
-        dry_run: bool = False
-    ) -> Union[Certificate, CertificateDryRunResult]:
+        self, domain: str, force: bool = False, dry_run: bool = False
+    ) -> Certificate | CertificateDryRunResult:
         """
         Renew an existing certificate.
 
@@ -847,44 +790,39 @@ class CertManager:
         cert = await self.get_certificate(domain)
         if not cert:
             raise CertificateNotFoundError(
-                f"Certificate not found for {domain}",
-                domain=domain,
-                suggestion="Request a new certificate instead"
+                f"Certificate not found for {domain}", domain=domain, suggestion="Request a new certificate instead"
             )
 
         if cert.certificate_type == CertificateType.CUSTOM:
             raise CertificateError(
-                "Cannot auto-renew custom certificates",
-                domain=domain,
-                suggestion="Upload a new certificate manually"
+                "Cannot auto-renew custom certificates", domain=domain, suggestion="Upload a new certificate manually"
             )
 
         # Check if renewal is needed
         days_left = cert.days_until_expiry
-        needs_renewal = (
-            force or
-            days_left is None or
-            days_left <= settings.cert_renewal_days
-        )
+        needs_renewal = force or days_left is None or days_left <= settings.cert_renewal_days
 
         if dry_run:
             return CertificateDryRunResult(
                 would_succeed=needs_renewal,
                 operation="renew_certificate",
-                message=f"Certificate renewal for {domain}" + (
-                    "" if needs_renewal else f" (not needed, {days_left} days remaining)"
-                ),
+                message=f"Certificate renewal for {domain}"
+                + ("" if needs_renewal else f" (not needed, {days_left} days remaining)"),
                 domain_resolves=True,
                 domain_points_to_server=True,
                 port_80_accessible=True,
                 nginx_config_valid=True,
                 sites_affected=[],
                 files_to_create=[],
-                warnings=[] if needs_renewal else [{
-                    "code": "renewal_not_needed",
-                    "message": f"Certificate has {days_left} days remaining",
-                    "suggestion": "Use force=true to renew anyway"
-                }]
+                warnings=[]
+                if needs_renewal
+                else [
+                    {
+                        "code": "renewal_not_needed",
+                        "message": f"Certificate has {days_left} days remaining",
+                        "suggestion": "Use force=true to renew anyway",
+                    }
+                ],
             )
 
         if not needs_renewal:
@@ -897,9 +835,7 @@ class CertManager:
         try:
             # Request new certificate (same as initial request)
             new_cert = await self.request_certificate(
-                domain=domain,
-                alt_names=cert.alt_names,
-                auto_renew=cert.auto_renew
+                domain=domain, alt_names=cert.alt_names, auto_renew=cert.auto_renew
             )
 
             # Update renewal timestamp
@@ -907,11 +843,7 @@ class CertManager:
             new_cert.renewal_attempts = 0
             new_cert.last_renewal_error = None
 
-            await self.db.update(
-                "certificates",
-                new_cert.id,
-                await self._certificate_to_db(new_cert)
-            )
+            await self.db.update("certificates", new_cert.id, await self._certificate_to_db(new_cert))
 
             logger.info(f"Successfully renewed certificate for {domain}")
             return new_cert
@@ -919,18 +851,10 @@ class CertManager:
         except Exception as e:
             # Record failure
             cert.last_renewal_error = str(e)
-            await self.db.update(
-                "certificates",
-                cert.id,
-                await self._certificate_to_db(cert)
-            )
+            await self.db.update("certificates", cert.id, await self._certificate_to_db(cert))
             raise
 
-    async def revoke_certificate(
-        self,
-        domain: str,
-        dry_run: bool = False
-    ) -> Union[bool, CertificateDryRunResult]:
+    async def revoke_certificate(self, domain: str, dry_run: bool = False) -> bool | CertificateDryRunResult:
         """
         Revoke and remove a certificate.
 
@@ -940,10 +864,7 @@ class CertManager:
         """
         cert = await self.get_certificate(domain)
         if not cert:
-            raise CertificateNotFoundError(
-                f"Certificate not found for {domain}",
-                domain=domain
-            )
+            raise CertificateNotFoundError(f"Certificate not found for {domain}", domain=domain)
 
         if dry_run:
             return CertificateDryRunResult(
@@ -956,11 +877,13 @@ class CertManager:
                 nginx_config_valid=True,
                 sites_affected=[],
                 files_to_create=[],
-                warnings=[{
-                    "code": "sites_affected",
-                    "message": "Sites using this certificate will need to be updated",
-                    "suggestion": "Update site configurations to remove SSL or use a new certificate"
-                }]
+                warnings=[
+                    {
+                        "code": "sites_affected",
+                        "message": "Sites using this certificate will need to be updated",
+                        "suggestion": "Update site configurations to remove SSL or use a new certificate",
+                    }
+                ],
             )
 
         # Revoke with ACME if it's a Let's Encrypt cert
@@ -977,15 +900,12 @@ class CertManager:
         cert_dir = self._get_cert_dir(domain)
         if cert_dir.exists():
             import shutil
+
             shutil.rmtree(cert_dir)
 
         # Update database
         cert.status = CertificateStatus.REVOKED
-        await self.db.update(
-            "certificates",
-            cert.id,
-            await self._certificate_to_db(cert)
-        )
+        await self.db.update("certificates", cert.id, await self._certificate_to_db(cert))
 
         logger.info(f"Successfully revoked certificate for {domain}")
         return True
@@ -1005,6 +925,7 @@ class CertManager:
         cert_dir = self._get_cert_dir(domain)
         if cert_dir.exists():
             import shutil
+
             shutil.rmtree(cert_dir)
 
         # Delete from database
@@ -1055,24 +976,30 @@ class CertManager:
         # Build suggestions
         suggestions = []
         if not dns_ok:
-            suggestions.append({
-                "action": "Configure DNS A record",
-                "reason": "Domain must resolve to this server for certificate validation",
-                "priority": "high"
-            })
+            suggestions.append(
+                {
+                    "action": "Configure DNS A record",
+                    "reason": "Domain must resolve to this server for certificate validation",
+                    "priority": "high",
+                }
+            )
         if not result.port_80_open:
-            suggestions.append({
-                "action": "Open port 80 in firewall",
-                "reason": "Let's Encrypt requires port 80 for HTTP-01 challenge",
-                "priority": "high"
-            })
+            suggestions.append(
+                {
+                    "action": "Open port 80 in firewall",
+                    "reason": "Let's Encrypt requires port 80 for HTTP-01 challenge",
+                    "priority": "high",
+                }
+            )
         if result.ready_for_ssl and not cert:
-            suggestions.append({
-                "action": "Request SSL certificate",
-                "reason": "Domain is ready for SSL certificate",
-                "endpoint": "POST /certificates/",
-                "priority": "medium"
-            })
+            suggestions.append(
+                {
+                    "action": "Request SSL certificate",
+                    "reason": "Domain is ready for SSL certificate",
+                    "endpoint": "POST /certificates/",
+                    "priority": "medium",
+                }
+            )
 
         result.suggestions = suggestions
 
@@ -1080,7 +1007,7 @@ class CertManager:
 
 
 # Singleton instance
-_cert_manager: Optional[CertManager] = None
+_cert_manager: CertManager | None = None
 
 
 def get_cert_manager() -> CertManager:

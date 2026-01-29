@@ -6,16 +6,16 @@ enabling access to rich nested data for new consumers.
 """
 
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any
 
-from models.nginx import ParsedNginxConfig, ServerBlock, LocationBlock, UpstreamBlock
+from models.nginx import LocationBlock, ParsedNginxConfig, ServerBlock, UpstreamBlock
 
 
 class ConfigAdapter:
     """Converts between parser output and API response formats."""
 
     @staticmethod
-    def to_legacy_dict(parsed: ParsedNginxConfig) -> Dict[str, Any]:
+    def to_legacy_dict(parsed: ParsedNginxConfig) -> dict[str, Any]:
         """
         Convert ParsedNginxConfig to legacy flat dictionary format.
 
@@ -64,11 +64,11 @@ class ConfigAdapter:
 
         # Determine enabled status from file extension
         file_path = Path(parsed.file_path)
-        is_enabled = not file_path.name.endswith('.disabled')
+        is_enabled = not file_path.name.endswith(".disabled")
 
         # Get site name (strip .disabled if present)
         name = file_path.stem
-        if name.endswith('.conf'):
+        if name.endswith(".conf"):
             name = name[:-5]  # Remove .conf from name like "site.conf.disabled"
 
         return {
@@ -87,7 +87,7 @@ class ConfigAdapter:
         }
 
     @staticmethod
-    def _extract_ports(server: Optional[ServerBlock]) -> List[int]:
+    def _extract_ports(server: ServerBlock | None) -> list[int]:
         """Extract all unique listen ports from a server block."""
         if not server:
             return []
@@ -100,7 +100,7 @@ class ConfigAdapter:
         return sorted(list(ports))
 
     @staticmethod
-    def _find_root(server: Optional[ServerBlock]) -> Optional[str]:
+    def _find_root(server: ServerBlock | None) -> str | None:
         """Find the root path from server or location blocks."""
         if not server:
             return None
@@ -117,7 +117,7 @@ class ConfigAdapter:
         return None
 
     @staticmethod
-    def _find_proxy_pass(server: Optional[ServerBlock]) -> Optional[str]:
+    def _find_proxy_pass(server: ServerBlock | None) -> str | None:
         """Find the first proxy_pass from location blocks."""
         if not server:
             return None
@@ -129,7 +129,7 @@ class ConfigAdapter:
         return None
 
     @staticmethod
-    def to_rich_dict(parsed: ParsedNginxConfig) -> Dict[str, Any]:
+    def to_rich_dict(parsed: ParsedNginxConfig) -> dict[str, Any]:
         """
         Convert to dictionary with both legacy and rich fields.
 
@@ -159,10 +159,7 @@ class ConfigAdapter:
 
             # Location blocks - use SSL server if available for richer content
             content_server = ssl_server if ssl_server else primary_server
-            result["locations"] = [
-                ConfigAdapter._location_to_dict(loc)
-                for loc in content_server.locations
-            ]
+            result["locations"] = [ConfigAdapter._location_to_dict(loc) for loc in content_server.locations]
 
             # SSL config - use SSL server if available
             ssl_source = ssl_server if ssl_server else primary_server
@@ -175,10 +172,7 @@ class ConfigAdapter:
             }
 
         # Upstreams (file-level, not server-level)
-        result["upstreams"] = [
-            ConfigAdapter._upstream_to_dict(up)
-            for up in parsed.upstreams
-        ]
+        result["upstreams"] = [ConfigAdapter._upstream_to_dict(up) for up in parsed.upstreams]
 
         # Parse errors if any
         if parsed.errors:
@@ -187,7 +181,7 @@ class ConfigAdapter:
         return result
 
     @staticmethod
-    def _location_to_dict(location: LocationBlock) -> Dict[str, Any]:
+    def _location_to_dict(location: LocationBlock) -> dict[str, Any]:
         """Convert LocationBlock to dictionary."""
         return {
             "modifier": location.modifier,
@@ -201,7 +195,7 @@ class ConfigAdapter:
         }
 
     @staticmethod
-    def _upstream_to_dict(upstream: UpstreamBlock) -> Dict[str, Any]:
+    def _upstream_to_dict(upstream: UpstreamBlock) -> dict[str, Any]:
         """Convert UpstreamBlock to dictionary."""
         return {
             "name": upstream.name,

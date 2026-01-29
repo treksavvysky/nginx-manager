@@ -6,12 +6,13 @@ wrapped in transactions with automatic snapshot and rollback handling.
 """
 
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Optional, Dict, Any
+from typing import Any
 
-from models.transaction import Transaction, OperationType
-from core.transaction_manager import get_transaction_manager
 from config import settings
+from core.transaction_manager import get_transaction_manager
+from models.transaction import OperationType, Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,8 @@ class TransactionContext:
 
     def __init__(self, transaction: Transaction):
         self.transaction = transaction
-        self.result_data: Optional[Dict[str, Any]] = None
-        self.after_state: Optional[Dict[str, Any]] = None
+        self.result_data: dict[str, Any] | None = None
+        self.after_state: dict[str, Any] | None = None
         self.nginx_validated: bool = False
         self.health_verified: bool = False
 
@@ -31,11 +32,11 @@ class TransactionContext:
         """Get the transaction ID."""
         return self.transaction.id
 
-    def set_result(self, result: Dict[str, Any]) -> None:
+    def set_result(self, result: dict[str, Any]) -> None:
         """Set the operation result data."""
         self.result_data = result
 
-    def set_after_state(self, state: Dict[str, Any]) -> None:
+    def set_after_state(self, state: dict[str, Any]) -> None:
         """Set the after-state summary."""
         self.after_state = state
 
@@ -52,9 +53,9 @@ class TransactionContext:
 async def transactional_operation(
     operation: OperationType,
     resource_type: str,
-    resource_id: Optional[str] = None,
-    request_data: Optional[Dict[str, Any]] = None,
-    auto_rollback_on_failure: bool = True
+    resource_id: str | None = None,
+    request_data: dict[str, Any] | None = None,
+    auto_rollback_on_failure: bool = True,
 ) -> AsyncGenerator[TransactionContext, None]:
     """
     Context manager for transactional operations.
@@ -89,10 +90,7 @@ async def transactional_operation(
 
     # Begin transaction and capture before-state
     transaction = await transaction_manager.begin_transaction(
-        operation=operation,
-        resource_type=resource_type,
-        resource_id=resource_id,
-        request_data=request_data
+        operation=operation, resource_type=resource_type, resource_id=resource_id, request_data=request_data
     )
 
     # Mark as in progress
@@ -109,7 +107,7 @@ async def transactional_operation(
             result_data=ctx.result_data,
             after_state=ctx.after_state,
             nginx_validated=ctx.nginx_validated,
-            health_verified=ctx.health_verified
+            health_verified=ctx.health_verified,
         )
 
     except Exception as e:
@@ -120,7 +118,7 @@ async def transactional_operation(
             transaction_id=transaction.id,
             error_message=str(e),
             error_details={"exception_type": type(e).__name__},
-            auto_rollback=auto_rollback_on_failure and settings.auto_rollback_on_failure
+            auto_rollback=auto_rollback_on_failure and settings.auto_rollback_on_failure,
         )
         raise
 
@@ -128,7 +126,7 @@ async def transactional_operation(
 class TransactionError(Exception):
     """Base exception for transaction errors."""
 
-    def __init__(self, message: str, transaction_id: Optional[str] = None):
+    def __init__(self, message: str, transaction_id: str | None = None):
         self.message = message
         self.transaction_id = transaction_id
         super().__init__(message)
@@ -136,9 +134,11 @@ class TransactionError(Exception):
 
 class RollbackError(TransactionError):
     """Error during rollback operation."""
+
     pass
 
 
 class SnapshotError(TransactionError):
     """Error during snapshot operation."""
+
     pass

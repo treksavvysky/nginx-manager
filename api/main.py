@@ -9,28 +9,25 @@ This API follows REST principles and provides safe, validated operations
 for NGINX server management in containerized environments.
 """
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response, JSONResponse
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-import uvicorn
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime
 
-from endpoints import sites, nginx, events, transactions, certificates, workflows, gpt, auth, users
-from config import settings, ensure_directories
-from core.request_logger import RequestLoggerMiddleware
+import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
+
+from config import ensure_directories, settings
 from core.rate_limiter import limiter
+from core.request_logger import RequestLoggerMiddleware
+from endpoints import auth, certificates, events, gpt, nginx, sites, transactions, users, workflows
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -44,11 +41,13 @@ async def lifespan(app: FastAPI):
 
     # Initialize database
     from core.database import initialize_database
+
     await initialize_database()
     logger.info("Database initialized")
 
     # Start certificate renewal scheduler
     from core.cert_scheduler import get_cert_scheduler
+
     cert_scheduler = get_cert_scheduler()
     try:
         await cert_scheduler.start()
@@ -73,20 +72,20 @@ app = FastAPI(
     title="NGINX Manager API",
     description="""
     ## 🎯 Purpose
-    
-    A modular, AI-agent-first API for managing NGINX configurations, SSL certificates, 
+
+    A modular, AI-agent-first API for managing NGINX configurations, SSL certificates,
     and reverse proxy setups on VPS environments.
-    
+
     ## 🤖 AI Agent Integration
-    
+
     This API is specifically designed for AI agents (Custom GPTs, Claude MCP) with:
     - **Detailed OpenAPI schemas** for automatic tool discovery
-    - **Comprehensive error responses** with actionable messages  
+    - **Comprehensive error responses** with actionable messages
     - **Safe operations** with validation and rollback capabilities
     - **Descriptive endpoints** with clear input/output specifications
-    
+
     ## 🛡️ Safety Features
-    
+
     - Configuration validation before deployment
     - Automatic backups before changes
     - Rollback capabilities for failed deployments
@@ -103,7 +102,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
 )
 
 # Rate limiting
@@ -137,6 +136,7 @@ app.include_router(gpt.router)
 app.include_router(auth.router)
 app.include_router(users.router)
 
+
 # Security headers middleware
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses."""
@@ -160,7 +160,9 @@ app.add_middleware(RequestLoggerMiddleware)
 _cors_origins = (
     [o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()]
     if settings.cors_allowed_origins
-    else ["*"] if settings.api_debug else []
+    else ["*"]
+    if settings.api_debug
+    else []
 )
 app.add_middleware(
     CORSMiddleware,
@@ -176,12 +178,12 @@ app.add_middleware(
     summary="API Health Check",
     description="Basic health check endpoint to verify the API is running.",
     response_description="API status and basic information",
-    tags=["Health"]
+    tags=["Health"],
 )
 async def root():
     """
     Welcome endpoint providing API status and basic information.
-    
+
     Returns:
         dict: API status, version, and available endpoints information
     """
@@ -192,11 +194,7 @@ async def root():
         "timestamp": datetime.now().isoformat(),
         "docs_url": "/docs",
         "openapi_url": "/openapi.json",
-        "features": [
-            "Configuration Management",
-            "SSL Certificate Lifecycle", 
-            "Reverse Proxy Setup"
-        ]
+        "features": ["Configuration Management", "SSL Certificate Lifecycle", "Reverse Proxy Setup"],
     }
 
 
@@ -205,7 +203,7 @@ async def root():
     summary="Detailed Health Check",
     description="Comprehensive health check including system status and dependencies.",
     response_description="Detailed health status of API and connected services",
-    tags=["Health"]
+    tags=["Health"],
 )
 async def health_check():
     """
@@ -221,15 +219,12 @@ async def health_check():
     Returns:
         dict: Detailed health status and system information
     """
-    from core.docker_service import docker_service, DockerServiceError
     from config import get_nginx_conf_path
     from core.context_helpers import get_system_state_summary
+    from core.docker_service import DockerServiceError, docker_service
 
     # Check NGINX container status
-    nginx_status = {
-        "status": "unknown",
-        "message": "Unable to determine NGINX status"
-    }
+    nginx_status = {"status": "unknown", "message": "Unable to determine NGINX status"}
     nginx_running = False
     nginx_healthy = False
 
@@ -242,19 +237,15 @@ async def health_check():
                 "status": "running",
                 "container_id": container_status.get("container_id"),
                 "uptime_seconds": container_status.get("uptime_seconds"),
-                "health_status": container_status.get("health_status", "unknown")
+                "health_status": container_status.get("health_status", "unknown"),
             }
         else:
             nginx_status = {
                 "status": container_status.get("status", "stopped"),
-                "message": "NGINX container is not running"
+                "message": "NGINX container is not running",
             }
     except DockerServiceError as e:
-        nginx_status = {
-            "status": "error",
-            "message": e.message,
-            "suggestion": e.suggestion
-        }
+        nginx_status = {"status": "error", "message": e.message, "suggestion": e.suggestion}
 
     # Count sites
     conf_dir = get_nginx_conf_path()
@@ -274,43 +265,40 @@ async def health_check():
         nginx_healthy=nginx_healthy,
         total_sites=total_sites,
         enabled_sites=enabled_sites,
-        disabled_sites=disabled_sites
+        disabled_sites=disabled_sites,
     )
 
     # Generate suggestions based on state
     suggestions = []
     if not nginx_running:
-        suggestions.append({
-            "action": "Start the NGINX container",
-            "reason": "NGINX is not running",
-            "priority": "high"
-        })
+        suggestions.append(
+            {"action": "Start the NGINX container", "reason": "NGINX is not running", "priority": "high"}
+        )
     if enabled_sites == 0 and total_sites == 0:
-        suggestions.append({
-            "action": "Create your first site",
-            "reason": "No sites are configured yet",
-            "endpoint": "POST /sites/",
-            "priority": "medium"
-        })
+        suggestions.append(
+            {
+                "action": "Create your first site",
+                "reason": "No sites are configured yet",
+                "endpoint": "POST /sites/",
+                "priority": "medium",
+            }
+        )
     if disabled_sites > 0:
-        suggestions.append({
-            "action": f"Review {disabled_sites} disabled site(s)",
-            "reason": "Some sites are disabled and not serving traffic",
-            "endpoint": "GET /sites/",
-            "priority": "low"
-        })
+        suggestions.append(
+            {
+                "action": f"Review {disabled_sites} disabled site(s)",
+                "reason": "Some sites are disabled and not serving traffic",
+                "endpoint": "GET /sites/",
+                "priority": "low",
+            }
+        )
 
     # Get SSL certificate status
-    ssl_status = {
-        "status": "unknown",
-        "total": 0,
-        "valid": 0,
-        "expiring_soon": 0,
-        "expired": 0
-    }
+    ssl_status = {"status": "unknown", "total": 0, "valid": 0, "expiring_soon": 0, "expired": 0}
     try:
         from core.cert_manager import get_cert_manager
         from models.certificate import CertificateStatus
+
         cert_manager = get_cert_manager()
         certs = await cert_manager.list_certificates()
         ssl_status["total"] = len(certs)
@@ -321,19 +309,23 @@ async def health_check():
 
         # Add SSL suggestions
         if ssl_status["expiring_soon"] > 0:
-            suggestions.append({
-                "action": f"Renew {ssl_status['expiring_soon']} certificate(s) expiring soon",
-                "reason": "Certificates should be renewed before they expire",
-                "endpoint": "GET /certificates/",
-                "priority": "high"
-            })
+            suggestions.append(
+                {
+                    "action": f"Renew {ssl_status['expiring_soon']} certificate(s) expiring soon",
+                    "reason": "Certificates should be renewed before they expire",
+                    "endpoint": "GET /certificates/",
+                    "priority": "high",
+                }
+            )
         if ssl_status["expired"] > 0:
-            suggestions.append({
-                "action": f"Address {ssl_status['expired']} expired certificate(s)",
-                "reason": "Expired certificates will cause browser warnings",
-                "endpoint": "GET /certificates/",
-                "priority": "critical"
-            })
+            suggestions.append(
+                {
+                    "action": f"Address {ssl_status['expired']} expired certificate(s)",
+                    "reason": "Expired certificates will cause browser warnings",
+                    "endpoint": "GET /certificates/",
+                    "priority": "critical",
+                }
+            )
     except Exception as e:
         logger.warning(f"Failed to get SSL status: {e}")
         ssl_status["status"] = "error"
@@ -343,6 +335,7 @@ async def health_check():
     security_warnings = []
     try:
         from core.context_helpers import get_security_warnings
+
         security_warnings = get_security_warnings()
     except Exception as e:
         logger.warning(f"Failed to get security warnings: {e}")
@@ -350,16 +343,9 @@ async def health_check():
     return {
         "status": "healthy" if nginx_healthy else ("degraded" if nginx_running else "unhealthy"),
         "timestamp": datetime.now().isoformat(),
-        "api": {
-            "status": "running",
-            "version": "0.2.0"
-        },
+        "api": {"status": "running", "version": "0.2.0"},
         "nginx": nginx_status,
-        "sites": {
-            "total": total_sites,
-            "enabled": enabled_sites,
-            "disabled": disabled_sites
-        },
+        "sites": {"total": total_sites, "enabled": enabled_sites, "disabled": disabled_sites},
         "system_state": system_state,
         "suggestions": suggestions,
         "ssl": ssl_status,
@@ -368,10 +354,4 @@ async def health_check():
 
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app", 
-        host="0.0.0.0", 
-        port=8000, 
-        reload=True,
-        log_level="info"
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, log_level="info")

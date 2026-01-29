@@ -10,12 +10,11 @@ import hashlib
 import logging
 import secrets
 from datetime import datetime, timedelta
-from typing import Optional, List, Tuple
 
 import jwt
 
-from core.database import get_database
 from config import settings
+from core.database import get_database
 from models.auth import APIKey, AuthContext, Role
 
 logger = logging.getLogger(__name__)
@@ -46,11 +45,11 @@ class AuthService:
         self,
         name: str,
         role: Role = Role.OPERATOR,
-        description: Optional[str] = None,
-        expires_at: Optional[datetime] = None,
-        rate_limit_override: Optional[int] = None,
-        created_by: Optional[str] = None,
-    ) -> Tuple[APIKey, str]:
+        description: str | None = None,
+        expires_at: datetime | None = None,
+        rate_limit_override: int | None = None,
+        created_by: str | None = None,
+    ) -> tuple[APIKey, str]:
         """
         Create a new API key.
 
@@ -69,24 +68,27 @@ class AuthService:
             created_by=created_by,
         )
 
-        await self.db.insert("api_keys", {
-            "id": api_key.id,
-            "key_hash": key_hash,
-            "name": api_key.name,
-            "description": api_key.description,
-            "role": api_key.role.value,
-            "created_at": api_key.created_at.isoformat(),
-            "last_used": None,
-            "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else None,
-            "is_active": True,
-            "rate_limit_override": api_key.rate_limit_override,
-            "created_by": api_key.created_by,
-        })
+        await self.db.insert(
+            "api_keys",
+            {
+                "id": api_key.id,
+                "key_hash": key_hash,
+                "name": api_key.name,
+                "description": api_key.description,
+                "role": api_key.role.value,
+                "created_at": api_key.created_at.isoformat(),
+                "last_used": None,
+                "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else None,
+                "is_active": True,
+                "rate_limit_override": api_key.rate_limit_override,
+                "created_by": api_key.created_by,
+            },
+        )
 
         logger.info(f"Created API key '{name}' (id={api_key.id}, role={role.value})")
         return api_key, plaintext_key
 
-    async def validate_api_key(self, plaintext_key: str) -> Optional[AuthContext]:
+    async def validate_api_key(self, plaintext_key: str) -> AuthContext | None:
         """
         Validate an API key and return auth context.
 
@@ -96,10 +98,7 @@ class AuthService:
             return None
 
         key_hash = self._hash_key(plaintext_key)
-        row = await self.db.fetch_one(
-            "SELECT * FROM api_keys WHERE key_hash = ?",
-            (key_hash,)
-        )
+        row = await self.db.fetch_one("SELECT * FROM api_keys WHERE key_hash = ?", (key_hash,))
 
         if not row:
             return None
@@ -118,8 +117,7 @@ class AuthService:
         # Update last_used timestamp (fire-and-forget)
         try:
             await self.db.execute(
-                "UPDATE api_keys SET last_used = ? WHERE id = ?",
-                (datetime.utcnow().isoformat(), row["id"])
+                "UPDATE api_keys SET last_used = ? WHERE id = ?", (datetime.utcnow().isoformat(), row["id"])
             )
         except Exception:
             pass  # Non-critical
@@ -130,33 +128,30 @@ class AuthService:
             auth_method="api_key",
         )
 
-    async def list_api_keys(self) -> List[APIKey]:
+    async def list_api_keys(self) -> list[APIKey]:
         """List all API keys (without hashes)."""
-        rows = await self.db.fetch_all(
-            "SELECT * FROM api_keys ORDER BY created_at DESC"
-        )
+        rows = await self.db.fetch_all("SELECT * FROM api_keys ORDER BY created_at DESC")
         keys = []
         for row in rows:
-            keys.append(APIKey(
-                id=row["id"],
-                name=row["name"],
-                description=row["description"],
-                role=Role(row["role"]),
-                created_at=datetime.fromisoformat(row["created_at"]),
-                last_used=datetime.fromisoformat(row["last_used"]) if row["last_used"] else None,
-                expires_at=datetime.fromisoformat(row["expires_at"]) if row["expires_at"] else None,
-                is_active=bool(row["is_active"]),
-                rate_limit_override=row["rate_limit_override"],
-                created_by=row["created_by"],
-            ))
+            keys.append(
+                APIKey(
+                    id=row["id"],
+                    name=row["name"],
+                    description=row["description"],
+                    role=Role(row["role"]),
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                    last_used=datetime.fromisoformat(row["last_used"]) if row["last_used"] else None,
+                    expires_at=datetime.fromisoformat(row["expires_at"]) if row["expires_at"] else None,
+                    is_active=bool(row["is_active"]),
+                    rate_limit_override=row["rate_limit_override"],
+                    created_by=row["created_by"],
+                )
+            )
         return keys
 
-    async def get_api_key(self, key_id: str) -> Optional[APIKey]:
+    async def get_api_key(self, key_id: str) -> APIKey | None:
         """Get an API key by ID."""
-        row = await self.db.fetch_one(
-            "SELECT * FROM api_keys WHERE id = ?",
-            (key_id,)
-        )
+        row = await self.db.fetch_one("SELECT * FROM api_keys WHERE id = ?", (key_id,))
         if not row:
             return None
 
@@ -175,10 +170,7 @@ class AuthService:
 
     async def revoke_api_key(self, key_id: str) -> bool:
         """Revoke (deactivate) an API key."""
-        result = await self.db.update(
-            "api_keys", key_id,
-            {"is_active": False}
-        )
+        result = await self.db.update("api_keys", key_id, {"is_active": False})
         if result:
             logger.info(f"Revoked API key: {key_id}")
         return result
@@ -190,7 +182,7 @@ class AuthService:
 
     # --- JWT Methods ---
 
-    def create_jwt_token(self, auth_context: AuthContext) -> Tuple[str, int]:
+    def create_jwt_token(self, auth_context: AuthContext) -> tuple[str, int]:
         """
         Create a JWT token encoding the given auth context.
 
@@ -202,10 +194,7 @@ class AuthService:
         """
         secret = settings.jwt_secret_key
         if not secret:
-            raise ValueError(
-                "JWT_SECRET_KEY must be configured to issue tokens. "
-                "Set it in environment variables."
-            )
+            raise ValueError("JWT_SECRET_KEY must be configured to issue tokens. Set it in environment variables.")
 
         expires_in = settings.jwt_expiry_minutes * 60
         now = datetime.utcnow()
@@ -226,7 +215,7 @@ class AuthService:
         token = jwt.encode(payload, secret, algorithm=settings.jwt_algorithm)
         return token, expires_in
 
-    def validate_jwt_token(self, token: str) -> Optional[AuthContext]:
+    def validate_jwt_token(self, token: str) -> AuthContext | None:
         """
         Validate a JWT token and return auth context.
 
@@ -258,7 +247,7 @@ class AuthService:
 
 
 # Singleton
-_auth_service: Optional[AuthService] = None
+_auth_service: AuthService | None = None
 
 
 def get_auth_service() -> AuthService:

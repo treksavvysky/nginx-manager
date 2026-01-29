@@ -5,9 +5,7 @@ Background task scheduler for automatic certificate renewal
 and expiry monitoring using APScheduler.
 """
 
-import asyncio
 import logging
-from typing import Optional
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -15,11 +13,11 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from config import settings
-from core.cert_manager import get_cert_manager, CertManager, CertificateError
-from core.event_store import get_event_store, EventStore
+from core.cert_manager import CertificateError, CertManager, get_cert_manager
 from core.docker_service import docker_service
-from models.certificate import CertificateStatus, CertificateType
-from models.event import EventSeverity, EventCategory
+from core.event_store import EventStore, get_event_store
+from models.certificate import CertificateType
+from models.event import EventCategory, EventSeverity
 
 logger = logging.getLogger(__name__)
 
@@ -49,27 +47,27 @@ class CertScheduler:
         self.scheduler.add_job(
             self._check_renewals,
             CronTrigger(hour=3, minute=0),
-            id='cert_renewal_check',
-            name='Certificate Renewal Check',
-            replace_existing=True
+            id="cert_renewal_check",
+            name="Certificate Renewal Check",
+            replace_existing=True,
         )
 
         # Check expiry warnings every 6 hours
         self.scheduler.add_job(
             self._check_expiry_warnings,
             IntervalTrigger(hours=6),
-            id='cert_expiry_check',
-            name='Certificate Expiry Warning Check',
-            replace_existing=True
+            id="cert_expiry_check",
+            name="Certificate Expiry Warning Check",
+            replace_existing=True,
         )
 
         # Run initial check in 1 minute after startup
         self.scheduler.add_job(
             self._initial_check,
-            'date',
+            "date",
             run_date=datetime.utcnow().replace(second=0, microsecond=0),
-            id='cert_initial_check',
-            name='Initial Certificate Check'
+            id="cert_initial_check",
+            name="Initial Certificate Check",
         )
 
         self.scheduler.start()
@@ -100,9 +98,7 @@ class CertScheduler:
 
         try:
             # Get certificates expiring within renewal window
-            expiring = await self.cert_manager.get_expiring_soon(
-                days=settings.cert_renewal_days
-            )
+            expiring = await self.cert_manager.get_expiring_soon(days=settings.cert_renewal_days)
 
             renewed_count = 0
             failed_count = 0
@@ -120,10 +116,7 @@ class CertScheduler:
                 logger.info(f"Auto-renewing certificate for {cert.domain}")
 
                 try:
-                    await self.cert_manager.renew_certificate(
-                        domain=cert.domain,
-                        force=False
-                    )
+                    await self.cert_manager.renew_certificate(domain=cert.domain, force=False)
 
                     # Record success event
                     await self.event_store.record_event(
@@ -133,10 +126,7 @@ class CertScheduler:
                         severity=EventSeverity.INFO,
                         resource_type="certificate",
                         resource_id=cert.domain,
-                        details={
-                            "days_until_expiry": cert.days_until_expiry,
-                            "auto_renewal": True
-                        }
+                        details={"days_until_expiry": cert.days_until_expiry, "auto_renewal": True},
                     )
 
                     renewed_count += 1
@@ -162,8 +152,8 @@ class CertScheduler:
                         details={
                             "error": e.message,
                             "suggestion": e.suggestion,
-                            "days_until_expiry": cert.days_until_expiry
-                        }
+                            "days_until_expiry": cert.days_until_expiry,
+                        },
                     )
 
                     failed_count += 1
@@ -172,10 +162,7 @@ class CertScheduler:
                     logger.exception(f"Unexpected error renewing {cert.domain}: {e}")
                     failed_count += 1
 
-            logger.info(
-                f"Certificate renewal check complete: "
-                f"{renewed_count} renewed, {failed_count} failed"
-            )
+            logger.info(f"Certificate renewal check complete: {renewed_count} renewed, {failed_count} failed")
 
         except Exception as e:
             logger.exception(f"Error in renewal check: {e}")
@@ -217,8 +204,8 @@ class CertScheduler:
                         details={
                             "days_expired": abs(days_left),
                             "expiry_date": cert.not_after.isoformat(),
-                            "auto_renew": cert.auto_renew
-                        }
+                            "auto_renew": cert.auto_renew,
+                        },
                     )
                     warning_count += 1
 
@@ -234,8 +221,8 @@ class CertScheduler:
                         details={
                             "days_until_expiry": days_left,
                             "expiry_date": cert.not_after.isoformat(),
-                            "auto_renew": cert.auto_renew
-                        }
+                            "auto_renew": cert.auto_renew,
+                        },
                     )
                     warning_count += 1
 
@@ -251,8 +238,8 @@ class CertScheduler:
                         details={
                             "days_until_expiry": days_left,
                             "expiry_date": cert.not_after.isoformat(),
-                            "auto_renew": cert.auto_renew
-                        }
+                            "auto_renew": cert.auto_renew,
+                        },
                     )
                     warning_count += 1
 
@@ -285,15 +272,12 @@ class CertScheduler:
         """Get next scheduled run times for all jobs."""
         jobs = {}
         for job in self.scheduler.get_jobs():
-            jobs[job.id] = {
-                "name": job.name,
-                "next_run": job.next_run_time.isoformat() if job.next_run_time else None
-            }
+            jobs[job.id] = {"name": job.name, "next_run": job.next_run_time.isoformat() if job.next_run_time else None}
         return jobs
 
 
 # Singleton instance
-_cert_scheduler: Optional[CertScheduler] = None
+_cert_scheduler: CertScheduler | None = None
 
 
 def get_cert_scheduler() -> CertScheduler:

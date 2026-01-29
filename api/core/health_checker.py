@@ -7,7 +7,6 @@ NGINX is responding correctly after reload/restart operations.
 
 import asyncio
 import logging
-from typing import Optional
 
 import httpx
 
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 class HealthCheckError(Exception):
     """Health check failed after all retries."""
 
-    def __init__(self, message: str, attempts: int, last_error: Optional[str] = None):
+    def __init__(self, message: str, attempts: int, last_error: str | None = None):
         self.message = message
         self.attempts = attempts
         self.last_error = last_error
@@ -30,10 +29,7 @@ class HealthChecker:
     """Verify NGINX health via HTTP endpoint."""
 
     async def verify_health(
-        self,
-        retries: Optional[int] = None,
-        interval: Optional[float] = None,
-        timeout: float = 5.0
+        self, retries: int | None = None, interval: float | None = None, timeout: float = 5.0
     ) -> bool:
         """
         Verify NGINX is healthy by checking the health endpoint.
@@ -58,52 +54,34 @@ class HealthChecker:
         for attempt in range(1, retries + 1):
             try:
                 async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        endpoint,
-                        timeout=timeout
-                    )
+                    response = await client.get(endpoint, timeout=timeout)
 
                     if response.status_code == 200:
-                        logger.info(
-                            f"Health check passed on attempt {attempt}/{retries}"
-                        )
+                        logger.info(f"Health check passed on attempt {attempt}/{retries}")
                         return True
 
                     last_error = f"HTTP {response.status_code}"
-                    logger.warning(
-                        f"Health check attempt {attempt}/{retries} returned "
-                        f"status {response.status_code}"
-                    )
+                    logger.warning(f"Health check attempt {attempt}/{retries} returned status {response.status_code}")
 
             except httpx.ConnectError as e:
                 last_error = f"Connection error: {e}"
-                logger.warning(
-                    f"Health check attempt {attempt}/{retries} connection failed: {e}"
-                )
+                logger.warning(f"Health check attempt {attempt}/{retries} connection failed: {e}")
 
             except httpx.TimeoutException as e:
                 last_error = f"Timeout: {e}"
-                logger.warning(
-                    f"Health check attempt {attempt}/{retries} timed out"
-                )
+                logger.warning(f"Health check attempt {attempt}/{retries} timed out")
 
             except httpx.RequestError as e:
                 last_error = str(e)
-                logger.warning(
-                    f"Health check attempt {attempt}/{retries} failed: {e}"
-                )
+                logger.warning(f"Health check attempt {attempt}/{retries} failed: {e}")
 
             # Wait before retry (except on last attempt)
             if attempt < retries:
                 await asyncio.sleep(interval)
 
-        raise HealthCheckError(
-            f"Health check failed after {retries} attempts",
-            attempts=retries,
-            last_error=last_error
-        )
+        raise HealthCheckError(f"Health check failed after {retries} attempts", attempts=retries, last_error=last_error)
 
-    async def check_health_once(self, timeout: float = 5.0) -> tuple[bool, Optional[str]]:
+    async def check_health_once(self, timeout: float = 5.0) -> tuple[bool, str | None]:
         """
         Single health check without retries.
 

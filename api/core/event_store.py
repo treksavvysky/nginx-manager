@@ -7,17 +7,17 @@ with efficient querying and retention management.
 
 import logging
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Any
 
+from config import settings
+from core.database import deserialize_json, get_database, serialize_json
 from models.event import (
     Event,
-    EventSeverity,
-    EventFilters,
-    EventsListResponse,
     EventCountBySeverity,
+    EventFilters,
+    EventSeverity,
+    EventsListResponse,
 )
-from core.database import get_database, serialize_json, deserialize_json
-from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +34,14 @@ class EventStore:
         action: str,
         message: str,
         severity: EventSeverity = EventSeverity.INFO,
-        transaction_id: Optional[str] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        transaction_id: str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        details: dict[str, Any] | None = None,
         source: str = "api",
-        client_ip: Optional[str] = None,
-        user_id: Optional[str] = None,
-        api_key_id: Optional[str] = None,
+        client_ip: str | None = None,
+        user_id: str | None = None,
+        api_key_id: str | None = None,
     ) -> Event:
         """
         Record a new event to the database.
@@ -128,12 +128,9 @@ class EventStore:
             **kwargs,
         )
 
-    async def get_event(self, event_id: str) -> Optional[Event]:
+    async def get_event(self, event_id: str) -> Event | None:
         """Get a specific event by ID."""
-        row = await self.db.fetch_one(
-            "SELECT * FROM events WHERE id = ?",
-            (event_id,)
-        )
+        row = await self.db.fetch_one("SELECT * FROM events WHERE id = ?", (event_id,))
 
         if not row:
             return None
@@ -141,10 +138,7 @@ class EventStore:
         return self._row_to_event(row)
 
     async def list_events(
-        self,
-        filters: Optional[EventFilters] = None,
-        page: int = 1,
-        page_size: int = 50
+        self, filters: EventFilters | None = None, page: int = 1, page_size: int = 50
     ) -> EventsListResponse:
         """
         List events with optional filtering and pagination.
@@ -158,7 +152,7 @@ class EventStore:
             Paginated list of events
         """
         where_clauses = []
-        params: List[Any] = []
+        params: list[Any] = []
 
         if filters:
             if filters.since:
@@ -212,17 +206,10 @@ class EventStore:
         events = [self._row_to_event(row) for row in rows]
 
         return EventsListResponse(
-            events=events,
-            total=total,
-            page=page,
-            page_size=page_size,
-            has_more=(offset + len(events)) < total
+            events=events, total=total, page=page, page_size=page_size, has_more=(offset + len(events)) < total
         )
 
-    async def get_transaction_events(
-        self,
-        transaction_id: str
-    ) -> List[Event]:
+    async def get_transaction_events(self, transaction_id: str) -> list[Event]:
         """Get all events for a specific transaction."""
         rows = await self.db.fetch_all(
             """
@@ -230,15 +217,12 @@ class EventStore:
             WHERE transaction_id = ?
             ORDER BY timestamp ASC
             """,
-            (transaction_id,)
+            (transaction_id,),
         )
 
         return [self._row_to_event(row) for row in rows]
 
-    async def get_event_counts_by_severity(
-        self,
-        since: Optional[datetime] = None
-    ) -> EventCountBySeverity:
+    async def get_event_counts_by_severity(self, since: datetime | None = None) -> EventCountBySeverity:
         """Get event counts grouped by severity."""
         where_clause = ""
         params: tuple = ()
@@ -272,10 +256,7 @@ class EventStore:
 
         return counts
 
-    async def enforce_retention(
-        self,
-        retention_days: Optional[int] = None
-    ) -> int:
+    async def enforce_retention(self, retention_days: int | None = None) -> int:
         """
         Delete events older than retention period.
 
@@ -287,18 +268,14 @@ class EventStore:
         """
         days = retention_days or settings.event_retention_days
 
-        deleted = await self.db.delete_older_than(
-            "events",
-            "timestamp",
-            days
-        )
+        deleted = await self.db.delete_older_than("events", "timestamp", days)
 
         if deleted > 0:
             logger.info(f"Retention cleanup: deleted {deleted} events older than {days} days")
 
         return deleted
 
-    def _row_to_event(self, row: Dict[str, Any]) -> Event:
+    def _row_to_event(self, row: dict[str, Any]) -> Event:
         """Convert a database row to an Event object."""
         return Event(
             id=row["id"],
@@ -319,7 +296,7 @@ class EventStore:
 
 
 # Singleton instance
-_event_store: Optional[EventStore] = None
+_event_store: EventStore | None = None
 
 
 def get_event_store() -> EventStore:

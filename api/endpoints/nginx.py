@@ -15,29 +15,28 @@ from typing import Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.auth_dependency import get_current_auth, require_role
-from models.auth import AuthContext, Role
-
 from config import settings
-from core.docker_service import (
-    docker_service,
-    DockerServiceError,
-    ContainerNotFoundError,
-    DockerUnavailableError,
-)
-from core.health_checker import health_checker, HealthCheckError
-from core.transaction_context import transactional_operation
-from core.transaction_manager import get_transaction_manager
+from core.auth_dependency import require_role
 from core.context_helpers import (
     get_nginx_reload_suggestions,
     get_nginx_restart_suggestions,
 )
+from core.docker_service import (
+    ContainerNotFoundError,
+    DockerServiceError,
+    DockerUnavailableError,
+    docker_service,
+)
+from core.health_checker import HealthCheckError, health_checker
+from core.transaction_context import transactional_operation
+from core.transaction_manager import get_transaction_manager
+from models.auth import AuthContext, Role
 from models.nginx import (
-    NginxOperationResult,
-    NginxStatusResponse,
     NginxConfigTestResult,
-    NginxProcessStatus,
     NginxDryRunResult,
+    NginxOperationResult,
+    NginxProcessStatus,
+    NginxStatusResponse,
 )
 from models.transaction import OperationType
 
@@ -50,29 +49,14 @@ def _handle_docker_error(e: DockerServiceError) -> HTTPException:
     """Convert Docker errors to appropriate HTTP exceptions."""
     if isinstance(e, ContainerNotFoundError):
         return HTTPException(
-            status_code=503,
-            detail={
-                "error": e.error_type,
-                "message": e.message,
-                "suggestion": e.suggestion
-            }
+            status_code=503, detail={"error": e.error_type, "message": e.message, "suggestion": e.suggestion}
         )
     if isinstance(e, DockerUnavailableError):
         return HTTPException(
-            status_code=503,
-            detail={
-                "error": e.error_type,
-                "message": e.message,
-                "suggestion": e.suggestion
-            }
+            status_code=503, detail={"error": e.error_type, "message": e.message, "suggestion": e.suggestion}
         )
     return HTTPException(
-        status_code=500,
-        detail={
-            "error": e.error_type,
-            "message": e.message,
-            "suggestion": e.suggestion
-        }
+        status_code=500, detail={"error": e.error_type, "message": e.message, "suggestion": e.suggestion}
     )
 
 
@@ -106,13 +90,13 @@ If health check fails after reload, previous configuration is restored.
 """,
     responses={
         200: {"description": "Reload completed or dry run result"},
-        503: {"description": "NGINX container not available"}
-    }
+        503: {"description": "NGINX container not available"},
+    },
 )
 async def reload_nginx(
     dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
     auth: AuthContext = Depends(require_role(Role.OPERATOR)),
-) -> Union[NginxOperationResult, NginxDryRunResult]:
+) -> NginxOperationResult | NginxDryRunResult:
     """Gracefully reload NGINX configuration."""
     start_time = time.time()
 
@@ -144,21 +128,23 @@ async def reload_nginx(
             return NginxDryRunResult(
                 would_succeed=config_valid and container_running,
                 operation="reload",
-                message="Would perform graceful NGINX reload" if config_valid else "Reload would fail due to invalid configuration",
+                message="Would perform graceful NGINX reload"
+                if config_valid
+                else "Reload would fail due to invalid configuration",
                 current_state=current_state,
                 container_running=container_running,
                 config_valid=config_valid,
                 config_test_output=config_test_output,
                 would_drop_connections=False,
                 estimated_downtime_ms=0,
-                warnings=warnings
+                warnings=warnings,
             )
 
         async with transactional_operation(
             operation=OperationType.NGINX_RELOAD,
             resource_type="nginx",
             resource_id="nginx",
-            auto_rollback_on_failure=False  # We handle rollback manually for health failures
+            auto_rollback_on_failure=False,  # We handle rollback manually for health failures
         ) as ctx:
             # Get current state
             status = await docker_service.get_container_status()
@@ -197,12 +183,14 @@ async def reload_nginx(
                     transaction_manager = get_transaction_manager()
 
                     # Complete current transaction first (mark as needing rollback)
-                    ctx.set_result({
-                        "success": False,
-                        "operation": "reload",
-                        "health_verified": False,
-                        "auto_rollback_triggered": True
-                    })
+                    ctx.set_result(
+                        {
+                            "success": False,
+                            "operation": "reload",
+                            "health_verified": False,
+                            "auto_rollback_triggered": True,
+                        }
+                    )
 
                     # We need to complete the transaction context before rollback
                     # The rollback will be done after the context exits
@@ -216,12 +204,14 @@ async def reload_nginx(
 
             # Set transaction context data
             ctx.set_nginx_validated(True)
-            ctx.set_result({
-                "success": health_verified,
-                "operation": "reload",
-                "duration_ms": duration_ms,
-                "health_verified": health_verified
-            })
+            ctx.set_result(
+                {
+                    "success": health_verified,
+                    "operation": "reload",
+                    "duration_ms": duration_ms,
+                    "health_verified": health_verified,
+                }
+            )
 
             # Store transaction ID for potential rollback after context exits
             transaction_id = ctx.id
@@ -230,10 +220,7 @@ async def reload_nginx(
         if not health_verified and settings.auto_rollback_on_failure:
             try:
                 transaction_manager = get_transaction_manager()
-                rollback_result = await transaction_manager.rollback_transaction(
-                    transaction_id,
-                    reason=rollback_reason
-                )
+                rollback_result = await transaction_manager.rollback_transaction(transaction_id, reason=rollback_reason)
 
                 if rollback_result.success:
                     auto_rolled_back = True
@@ -257,9 +244,7 @@ async def reload_nginx(
 
         # Generate suggestions
         suggestions = get_nginx_reload_suggestions(
-            success=health_verified,
-            health_verified=health_verified,
-            auto_rolled_back=auto_rolled_back
+            success=health_verified, health_verified=health_verified, auto_rolled_back=auto_rolled_back
         )
 
         return NginxOperationResult(
@@ -274,7 +259,7 @@ async def reload_nginx(
             auto_rolled_back=auto_rolled_back,
             rollback_reason=rollback_reason if auto_rolled_back else None,
             rollback_transaction_id=rollback_transaction_id,
-            suggestions=suggestions
+            suggestions=suggestions,
         )
 
     except DockerServiceError as e:
@@ -283,11 +268,7 @@ async def reload_nginx(
         # Handle reload failure (non-Docker errors)
         duration_ms = int((time.time() - start_time) * 1000)
         return NginxOperationResult(
-            success=False,
-            operation="reload",
-            message=str(e),
-            duration_ms=duration_ms,
-            health_verified=False
+            success=False, operation="reload", message=str(e), duration_ms=duration_ms, health_verified=False
         )
 
 
@@ -315,13 +296,13 @@ or when NGINX is in an inconsistent state).
 """,
     responses={
         200: {"description": "Restart completed or dry run result"},
-        503: {"description": "NGINX container not available"}
-    }
+        503: {"description": "NGINX container not available"},
+    },
 )
 async def restart_nginx(
     dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
     auth: AuthContext = Depends(require_role(Role.OPERATOR)),
-) -> Union[NginxOperationResult, NginxDryRunResult]:
+) -> NginxOperationResult | NginxDryRunResult:
     """Full restart of NGINX container."""
     start_time = time.time()
 
@@ -338,7 +319,7 @@ async def restart_nginx(
             config_test_output = None
             warnings = [
                 "This operation will drop all active connections",
-                "Consider using /nginx/reload for configuration changes"
+                "Consider using /nginx/reload for configuration changes",
             ]
 
             try:
@@ -362,13 +343,11 @@ async def restart_nginx(
                 config_test_output=config_test_output,
                 would_drop_connections=True,
                 estimated_downtime_ms=3000,  # Estimate ~3 seconds for restart
-                warnings=warnings
+                warnings=warnings,
             )
 
         async with transactional_operation(
-            operation=OperationType.NGINX_RESTART,
-            resource_type="nginx",
-            resource_id="nginx"
+            operation=OperationType.NGINX_RESTART, resource_type="nginx", resource_id="nginx"
         ) as ctx:
             previous_state = current_state
 
@@ -377,6 +356,7 @@ async def restart_nginx(
 
             # Wait for container to stabilize
             import asyncio
+
             await asyncio.sleep(2)
 
             # Verify health with more retries for restart
@@ -395,18 +375,17 @@ async def restart_nginx(
 
             # Set transaction context data
             ctx.set_nginx_validated(True)
-            ctx.set_result({
-                "success": True,
-                "operation": "restart",
-                "duration_ms": duration_ms,
-                "health_verified": health_verified
-            })
+            ctx.set_result(
+                {
+                    "success": True,
+                    "operation": "restart",
+                    "duration_ms": duration_ms,
+                    "health_verified": health_verified,
+                }
+            )
 
             # Generate suggestions
-            suggestions = get_nginx_restart_suggestions(
-                success=True,
-                health_verified=health_verified
-            )
+            suggestions = get_nginx_restart_suggestions(success=True, health_verified=health_verified)
 
             return NginxOperationResult(
                 success=True,
@@ -417,7 +396,7 @@ async def restart_nginx(
                 previous_state=previous_state,
                 current_state=new_status.get("status", "unknown"),
                 transaction_id=ctx.id,
-                suggestions=suggestions
+                suggestions=suggestions,
             )
 
     except DockerServiceError as e:
@@ -426,11 +405,7 @@ async def restart_nginx(
         # Handle restart failure (non-Docker errors)
         duration_ms = int((time.time() - start_time) * 1000)
         return NginxOperationResult(
-            success=False,
-            operation="restart",
-            message=str(e),
-            duration_ms=duration_ms,
-            health_verified=False
+            success=False, operation="restart", message=str(e), duration_ms=duration_ms, health_verified=False
         )
 
 
@@ -454,8 +429,8 @@ Returns comprehensive information about:
 """,
     responses={
         200: {"description": "Status retrieved successfully"},
-        503: {"description": "NGINX container not available"}
-    }
+        503: {"description": "NGINX container not available"},
+    },
 )
 async def get_nginx_status(
     auth: AuthContext = Depends(require_role(Role.VIEWER)),
@@ -481,7 +456,7 @@ async def get_nginx_status(
             started_at=status.get("started_at"),
             master_pid=status.get("pid"),
             health_status=status.get("health_status", "unknown"),
-            last_health_check=datetime.now()
+            last_health_check=datetime.now(),
         )
 
     except DockerServiceError as e:
@@ -513,8 +488,8 @@ to verify changes are valid.
 """,
     responses={
         200: {"description": "Test completed (check 'success' field for result)"},
-        503: {"description": "NGINX container not available"}
-    }
+        503: {"description": "NGINX container not available"},
+    },
 )
 async def test_nginx_config(
     auth: AuthContext = Depends(require_role(Role.OPERATOR)),
@@ -523,14 +498,11 @@ async def test_nginx_config(
     try:
         success, stdout, stderr = await docker_service.test_config()
 
-        # nginx -t outputs to stderr even on success
-        output = stderr.strip() if stderr else stdout.strip()
-
         return NginxConfigTestResult(
             success=success,
             message="Configuration is valid" if success else "Configuration test failed",
             stdout=stdout if stdout else None,
-            stderr=stderr if stderr else None
+            stderr=stderr if stderr else None,
         )
 
     except DockerServiceError as e:

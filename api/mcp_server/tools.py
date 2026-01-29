@@ -6,7 +6,6 @@ All mutation tools support dry_run parameter for previewing changes.
 """
 
 import logging
-from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -15,15 +14,16 @@ logger = logging.getLogger(__name__)
 # Site Management Tools
 # =============================================================================
 
+
 async def create_site(
     name: str,
-    server_names: List[str],
+    server_names: list[str],
     site_type: str,
     listen_port: int = 80,
-    root_path: Optional[str] = None,
-    proxy_pass: Optional[str] = None,
+    root_path: str | None = None,
+    proxy_pass: str | None = None,
     auto_reload: bool = True,
-    dry_run: bool = False
+    dry_run: bool = False,
 ) -> dict:
     """
     Create a new NGINX site configuration.
@@ -41,16 +41,17 @@ async def create_site(
     Returns:
         dict: Operation result with transaction_id and suggestions
     """
+    import shutil
+    import tempfile
     from pathlib import Path
+
     from config import get_nginx_conf_path, settings
-    from core.config_generator import get_config_generator, ConfigGeneratorError
-    from core.docker_service import docker_service, DockerServiceError
+    from core.config_generator import ConfigGeneratorError, get_config_generator
+    from core.context_helpers import get_config_warnings, get_site_create_suggestions
+    from core.docker_service import DockerServiceError, docker_service
     from core.transaction_context import transactional_operation
-    from core.context_helpers import get_site_create_suggestions, get_config_warnings
     from models.site_requests import SiteCreateRequest, SiteType
     from models.transaction import OperationType
-    import tempfile
-    import shutil
 
     conf_dir = get_nginx_conf_path()
     conf_file = conf_dir / f"{name}.conf"
@@ -63,18 +64,15 @@ async def create_site(
             "message": f"Site '{name}' already exists",
             "suggestions": [
                 f"Update with: update_site(name='{name}', ...)",
-                f"View current config: nginx://sites/{name}"
-            ]
+                f"View current config: nginx://sites/{name}",
+            ],
         }
 
     if disabled_file.exists():
         return {
             "success": False,
             "message": f"Site '{name}' exists but is disabled",
-            "suggestions": [
-                f"Enable it: enable_site(name='{name}')",
-                f"Delete first: delete_site(name='{name}')"
-            ]
+            "suggestions": [f"Enable it: enable_site(name='{name}')", f"Delete first: delete_site(name='{name}')"],
         }
 
     # Validate site_type
@@ -84,7 +82,10 @@ async def create_site(
         return {
             "success": False,
             "message": f"Invalid site_type '{site_type}'. Must be 'static' or 'reverse_proxy'",
-            "suggestions": ["Use site_type='static' for serving files", "Use site_type='reverse_proxy' for proxying to backend"]
+            "suggestions": [
+                "Use site_type='static' for serving files",
+                "Use site_type='reverse_proxy' for proxying to backend",
+            ],
         }
 
     # Create request model
@@ -95,7 +96,7 @@ async def create_site(
         listen_port=listen_port,
         root_path=root_path,
         proxy_pass=proxy_pass,
-        auto_reload=auto_reload
+        auto_reload=auto_reload,
     )
 
     # Generate configuration
@@ -106,7 +107,7 @@ async def create_site(
         return {
             "success": False,
             "message": f"Failed to generate configuration: {e.message}",
-            "suggestions": ["Check required fields for your site_type"]
+            "suggestions": ["Check required fields for your site_type"],
         }
 
     # Validate configuration
@@ -114,7 +115,7 @@ async def create_site(
     validation_output = None
 
     if settings.validate_before_deploy:
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as tmp_file:
             tmp_file.write(config_content)
             tmp_path = Path(tmp_file.name)
 
@@ -132,7 +133,7 @@ async def create_site(
 
     # If dry_run, return preview result
     if dry_run:
-        lines = config_content.count('\n') + 1
+        lines = config_content.count("\n") + 1
         return {
             "dry_run": True,
             "would_succeed": validation_passed,
@@ -143,7 +144,7 @@ async def create_site(
             "generated_config": config_content,
             "file_path": str(conf_file),
             "reload_required": True,
-            "warnings": [] if validation_passed else ["Configuration validation failed"]
+            "warnings": [] if validation_passed else ["Configuration validation failed"],
         }
 
     # Actual creation (not dry run)
@@ -151,13 +152,11 @@ async def create_site(
         return {
             "success": False,
             "message": f"Configuration validation failed: {validation_output}",
-            "suggestions": ["Review the generated configuration", "Check NGINX syntax requirements"]
+            "suggestions": ["Review the generated configuration", "Check NGINX syntax requirements"],
         }
 
     async with transactional_operation(
-        operation=OperationType.SITE_CREATE,
-        resource_type="site",
-        resource_id=name
+        operation=OperationType.SITE_CREATE, resource_type="site", resource_id=name
     ) as ctx:
         try:
             conf_file.write_text(config_content)
@@ -172,17 +171,14 @@ async def create_site(
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
             suggestions = get_site_create_suggestions(
-                site_name=name,
-                site_type=site_type,
-                reloaded=reloaded,
-                enabled=True
+                site_name=name, site_type=site_type, reloaded=reloaded, enabled=True
             )
             warnings = get_config_warnings(
                 ssl_enabled=False,
                 has_ssl_cert=False,
                 listen_ports=[listen_port],
                 proxy_pass=proxy_pass,
-                root_path=root_path
+                root_path=root_path,
             )
 
             return {
@@ -195,26 +191,26 @@ async def create_site(
                 "reloaded": reloaded,
                 "enabled": True,
                 "suggestions": suggestions,
-                "warnings": warnings
+                "warnings": warnings,
             }
 
         except Exception as e:
             logger.error(f"Error creating site: {e}")
             return {
                 "success": False,
-                "message": f"Failed to create site: {str(e)}",
-                "suggestions": ["Check file permissions", "Verify NGINX configuration directory"]
+                "message": f"Failed to create site: {e!s}",
+                "suggestions": ["Check file permissions", "Verify NGINX configuration directory"],
             }
 
 
 async def update_site(
     name: str,
-    server_names: Optional[List[str]] = None,
-    listen_port: Optional[int] = None,
-    root_path: Optional[str] = None,
-    proxy_pass: Optional[str] = None,
+    server_names: list[str] | None = None,
+    listen_port: int | None = None,
+    root_path: str | None = None,
+    proxy_pass: str | None = None,
     auto_reload: bool = True,
-    dry_run: bool = False
+    dry_run: bool = False,
 ) -> dict:
     """
     Update an existing site configuration.
@@ -231,15 +227,16 @@ async def update_site(
     Returns:
         dict: Operation result with transaction_id and suggestions
     """
+    import shutil
+
     from config import get_nginx_conf_path, settings
-    from core.config_manager import nginx_parser, ConfigAdapter
     from core.config_generator import get_config_generator
-    from core.docker_service import docker_service, DockerServiceError
+    from core.config_manager import ConfigAdapter, nginx_parser
+    from core.context_helpers import get_config_warnings, get_site_update_suggestions
+    from core.docker_service import DockerServiceError, docker_service
     from core.transaction_context import transactional_operation
-    from core.context_helpers import get_site_update_suggestions, get_config_warnings
     from models.site_requests import SiteCreateRequest, SiteType
     from models.transaction import OperationType
-    import shutil
 
     conf_dir = get_nginx_conf_path()
     conf_file = conf_dir / f"{name}.conf"
@@ -250,15 +247,12 @@ async def update_site(
             return {
                 "success": False,
                 "message": f"Site '{name}' is disabled. Enable it before updating.",
-                "suggestions": [f"Enable first: enable_site(name='{name}')"]
+                "suggestions": [f"Enable first: enable_site(name='{name}')"],
             }
         return {
             "success": False,
             "message": f"Site '{name}' not found",
-            "suggestions": [
-                f"Create it: create_site(name='{name}', ...)",
-                "List available sites: nginx://sites"
-            ]
+            "suggestions": [f"Create it: create_site(name='{name}', ...)", "List available sites: nginx://sites"],
         }
 
     # Parse existing configuration
@@ -267,7 +261,7 @@ async def update_site(
         return {
             "success": False,
             "message": f"Failed to parse existing configuration for '{name}'",
-            "suggestions": ["Check configuration syntax", "Consider recreating the site"]
+            "suggestions": ["Check configuration syntax", "Consider recreating the site"],
         }
 
     current_content = conf_file.read_text()
@@ -290,7 +284,7 @@ async def update_site(
         listen_port=merged_listen_port,
         root_path=merged_root_path,
         proxy_pass=merged_proxy_pass,
-        auto_reload=auto_reload
+        auto_reload=auto_reload,
     )
 
     generator = get_config_generator()
@@ -301,7 +295,7 @@ async def update_site(
     validation_output = None
 
     if settings.validate_before_deploy:
-        backup_path = conf_file.with_suffix('.conf.bak')
+        backup_path = conf_file.with_suffix(".conf.bak")
         shutil.copy(conf_file, backup_path)
         try:
             conf_file.write_text(config_content)
@@ -325,20 +319,18 @@ async def update_site(
             "current_content": current_content,
             "new_content": config_content,
             "file_path": str(conf_file),
-            "reload_required": True
+            "reload_required": True,
         }
 
     if not validation_passed:
         return {
             "success": False,
             "message": f"Configuration validation failed: {validation_output}",
-            "suggestions": ["Review the changes", "Check NGINX syntax"]
+            "suggestions": ["Review the changes", "Check NGINX syntax"],
         }
 
     async with transactional_operation(
-        operation=OperationType.SITE_UPDATE,
-        resource_type="site",
-        resource_id=name
+        operation=OperationType.SITE_UPDATE, resource_type="site", resource_id=name
     ) as ctx:
         try:
             conf_file.write_text(config_content)
@@ -352,17 +344,13 @@ async def update_site(
                 except DockerServiceError as e:
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
-            suggestions = get_site_update_suggestions(
-                site_name=name,
-                reloaded=reloaded,
-                changes_made=[]
-            )
+            suggestions = get_site_update_suggestions(site_name=name, reloaded=reloaded, changes_made=[])
             warnings = get_config_warnings(
                 ssl_enabled=False,
                 has_ssl_cert=False,
                 listen_ports=[merged_listen_port],
                 proxy_pass=merged_proxy_pass,
-                root_path=merged_root_path
+                root_path=merged_root_path,
             )
 
             return {
@@ -374,22 +362,15 @@ async def update_site(
                 "reload_required": not reloaded,
                 "reloaded": reloaded,
                 "suggestions": suggestions,
-                "warnings": warnings
+                "warnings": warnings,
             }
 
         except Exception as e:
             logger.error(f"Error updating site: {e}")
-            return {
-                "success": False,
-                "message": f"Failed to update site: {str(e)}"
-            }
+            return {"success": False, "message": f"Failed to update site: {e!s}"}
 
 
-async def delete_site(
-    name: str,
-    auto_reload: bool = False,
-    dry_run: bool = False
-) -> dict:
+async def delete_site(name: str, auto_reload: bool = False, dry_run: bool = False) -> dict:
     """
     Delete a site configuration.
 
@@ -402,9 +383,9 @@ async def delete_site(
         dict: Operation result with transaction_id
     """
     from config import get_nginx_conf_path
-    from core.docker_service import docker_service, DockerServiceError
-    from core.transaction_context import transactional_operation
     from core.context_helpers import get_site_delete_suggestions
+    from core.docker_service import DockerServiceError, docker_service
+    from core.transaction_context import transactional_operation
     from models.transaction import OperationType
 
     conf_dir = get_nginx_conf_path()
@@ -424,25 +405,23 @@ async def delete_site(
         return {
             "success": False,
             "message": f"Site '{name}' not found",
-            "suggestions": ["List available sites: nginx://sites"]
+            "suggestions": ["List available sites: nginx://sites"],
         }
 
     if dry_run:
         current_content = target_file.read_text()
-        lines = current_content.count('\n') + 1
+        lines = current_content.count("\n") + 1
         return {
             "dry_run": True,
             "would_succeed": True,
             "operation": "delete_site",
             "message": f"Would delete site '{name}' ({lines} lines)",
             "file_path": str(target_file),
-            "reload_required": was_enabled
+            "reload_required": was_enabled,
         }
 
     async with transactional_operation(
-        operation=OperationType.SITE_DELETE,
-        resource_type="site",
-        resource_id=name
+        operation=OperationType.SITE_DELETE, resource_type="site", resource_id=name
     ) as ctx:
         try:
             target_file.unlink()
@@ -456,11 +435,7 @@ async def delete_site(
                 except DockerServiceError as e:
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
-            suggestions = get_site_delete_suggestions(
-                site_name=name,
-                reloaded=reloaded,
-                was_enabled=was_enabled
-            )
+            suggestions = get_site_delete_suggestions(site_name=name, reloaded=reloaded, was_enabled=was_enabled)
 
             return {
                 "success": True,
@@ -469,22 +444,15 @@ async def delete_site(
                 "transaction_id": ctx.id,
                 "reload_required": was_enabled and not reloaded,
                 "reloaded": reloaded,
-                "suggestions": suggestions
+                "suggestions": suggestions,
             }
 
         except Exception as e:
             logger.error(f"Error deleting site: {e}")
-            return {
-                "success": False,
-                "message": f"Failed to delete site: {str(e)}"
-            }
+            return {"success": False, "message": f"Failed to delete site: {e!s}"}
 
 
-async def enable_site(
-    name: str,
-    auto_reload: bool = True,
-    dry_run: bool = False
-) -> dict:
+async def enable_site(name: str, auto_reload: bool = True, dry_run: bool = False) -> dict:
     """
     Enable a disabled site.
 
@@ -497,9 +465,9 @@ async def enable_site(
         dict: Operation result with transaction_id
     """
     from config import get_nginx_conf_path, settings
-    from core.docker_service import docker_service, DockerServiceError
-    from core.transaction_context import transactional_operation
     from core.context_helpers import get_site_enable_suggestions
+    from core.docker_service import DockerServiceError, docker_service
+    from core.transaction_context import transactional_operation
     from models.transaction import OperationType
 
     conf_dir = get_nginx_conf_path()
@@ -510,17 +478,14 @@ async def enable_site(
         return {
             "success": False,
             "message": f"Site '{name}' is already enabled",
-            "suggestions": [f"View site: nginx://sites/{name}"]
+            "suggestions": [f"View site: nginx://sites/{name}"],
         }
 
     if not disabled_file.exists():
         return {
             "success": False,
             "message": f"Site '{name}' not found",
-            "suggestions": [
-                f"Create it: create_site(name='{name}', ...)",
-                "List available sites: nginx://sites"
-            ]
+            "suggestions": [f"Create it: create_site(name='{name}', ...)", "List available sites: nginx://sites"],
         }
 
     if dry_run:
@@ -543,13 +508,11 @@ async def enable_site(
             "message": f"Would enable site '{name}'",
             "validation_passed": validation_passed,
             "validation_output": validation_output,
-            "reload_required": True
+            "reload_required": True,
         }
 
     async with transactional_operation(
-        operation=OperationType.SITE_ENABLE,
-        resource_type="site",
-        resource_id=name
+        operation=OperationType.SITE_ENABLE, resource_type="site", resource_id=name
     ) as ctx:
         try:
             disabled_file.rename(conf_file)
@@ -562,7 +525,7 @@ async def enable_site(
                     return {
                         "success": False,
                         "message": f"Configuration validation failed: {stderr}",
-                        "suggestions": ["Fix configuration errors before enabling"]
+                        "suggestions": ["Fix configuration errors before enabling"],
                     }
 
             reloaded = False
@@ -573,10 +536,7 @@ async def enable_site(
                 except DockerServiceError as e:
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
-            suggestions = get_site_enable_suggestions(
-                site_name=name,
-                reloaded=reloaded
-            )
+            suggestions = get_site_enable_suggestions(site_name=name, reloaded=reloaded)
 
             return {
                 "success": True,
@@ -587,22 +547,15 @@ async def enable_site(
                 "reload_required": not reloaded,
                 "reloaded": reloaded,
                 "enabled": True,
-                "suggestions": suggestions
+                "suggestions": suggestions,
             }
 
         except Exception as e:
             logger.error(f"Error enabling site: {e}")
-            return {
-                "success": False,
-                "message": f"Failed to enable site: {str(e)}"
-            }
+            return {"success": False, "message": f"Failed to enable site: {e!s}"}
 
 
-async def disable_site(
-    name: str,
-    auto_reload: bool = True,
-    dry_run: bool = False
-) -> dict:
+async def disable_site(name: str, auto_reload: bool = True, dry_run: bool = False) -> dict:
     """
     Disable a site without deleting it.
 
@@ -615,9 +568,9 @@ async def disable_site(
         dict: Operation result with transaction_id
     """
     from config import get_nginx_conf_path
-    from core.docker_service import docker_service, DockerServiceError
-    from core.transaction_context import transactional_operation
     from core.context_helpers import get_site_disable_suggestions
+    from core.docker_service import DockerServiceError, docker_service
+    from core.transaction_context import transactional_operation
     from models.transaction import OperationType
 
     conf_dir = get_nginx_conf_path()
@@ -628,14 +581,14 @@ async def disable_site(
         return {
             "success": False,
             "message": f"Site '{name}' is already disabled",
-            "suggestions": [f"Enable it: enable_site(name='{name}')"]
+            "suggestions": [f"Enable it: enable_site(name='{name}')"],
         }
 
     if not conf_file.exists():
         return {
             "success": False,
             "message": f"Site '{name}' not found",
-            "suggestions": ["List available sites: nginx://sites"]
+            "suggestions": ["List available sites: nginx://sites"],
         }
 
     if dry_run:
@@ -644,13 +597,11 @@ async def disable_site(
             "would_succeed": True,
             "operation": "disable_site",
             "message": f"Would disable site '{name}'",
-            "reload_required": True
+            "reload_required": True,
         }
 
     async with transactional_operation(
-        operation=OperationType.SITE_DISABLE,
-        resource_type="site",
-        resource_id=name
+        operation=OperationType.SITE_DISABLE, resource_type="site", resource_id=name
     ) as ctx:
         try:
             conf_file.rename(disabled_file)
@@ -664,10 +615,7 @@ async def disable_site(
                 except DockerServiceError as e:
                     logger.warning(f"Failed to reload NGINX: {e.message}")
 
-            suggestions = get_site_disable_suggestions(
-                site_name=name,
-                reloaded=reloaded
-            )
+            suggestions = get_site_disable_suggestions(site_name=name, reloaded=reloaded)
 
             return {
                 "success": True,
@@ -678,20 +626,18 @@ async def disable_site(
                 "reload_required": not reloaded,
                 "reloaded": reloaded,
                 "enabled": False,
-                "suggestions": suggestions
+                "suggestions": suggestions,
             }
 
         except Exception as e:
             logger.error(f"Error disabling site: {e}")
-            return {
-                "success": False,
-                "message": f"Failed to disable site: {str(e)}"
-            }
+            return {"success": False, "message": f"Failed to disable site: {e!s}"}
 
 
 # =============================================================================
 # NGINX Control Tools
 # =============================================================================
+
 
 async def nginx_reload(dry_run: bool = False) -> dict:
     """
@@ -704,9 +650,10 @@ async def nginx_reload(dry_run: bool = False) -> dict:
         dict: Operation result with health status
     """
     from datetime import datetime
-    from core.docker_service import docker_service, DockerServiceError
+
+    from core.docker_service import DockerServiceError, docker_service
+    from core.health_checker import HealthCheckError, health_checker
     from core.transaction_context import transactional_operation
-    from core.health_checker import health_checker, HealthCheckError
     from models.transaction import OperationType
 
     if dry_run:
@@ -723,7 +670,7 @@ async def nginx_reload(dry_run: bool = False) -> dict:
                 "config_valid": success,
                 "config_test_output": stderr or stdout,
                 "would_drop_connections": False,
-                "warnings": [] if success else ["Configuration has errors"]
+                "warnings": [] if success else ["Configuration has errors"],
             }
         except DockerServiceError as e:
             return {
@@ -731,20 +678,15 @@ async def nginx_reload(dry_run: bool = False) -> dict:
                 "would_succeed": False,
                 "operation": "nginx_reload",
                 "message": f"Would fail: {e.message}",
-                "warnings": [e.message]
+                "warnings": [e.message],
             }
 
     start_time = datetime.utcnow()
 
     async with transactional_operation(
-        operation=OperationType.NGINX_RELOAD,
-        resource_type="nginx",
-        resource_id="reload"
+        operation=OperationType.NGINX_RELOAD, resource_type="nginx", resource_id="reload"
     ) as ctx:
         try:
-            # Get initial state
-            initial_status = await docker_service.get_container_status()
-
             # Perform reload
             success, stdout, stderr = await docker_service.reload_nginx()
 
@@ -754,7 +696,7 @@ async def nginx_reload(dry_run: bool = False) -> dict:
                     "operation": "reload",
                     "message": f"Reload failed: {stderr}",
                     "transaction_id": ctx.id,
-                    "suggestions": ["Check configuration: nginx_test()", "View config errors"]
+                    "suggestions": ["Check configuration: nginx_test()", "View config errors"],
                 }
 
             # Verify health
@@ -775,7 +717,7 @@ async def nginx_reload(dry_run: bool = False) -> dict:
                 "duration_ms": duration_ms,
                 "health_verified": health_verified,
                 "transaction_id": ctx.id,
-                "suggestions": ["Check site accessibility", "Monitor logs for errors"]
+                "suggestions": ["Check site accessibility", "Monitor logs for errors"],
             }
 
         except DockerServiceError as e:
@@ -784,7 +726,7 @@ async def nginx_reload(dry_run: bool = False) -> dict:
                 "operation": "reload",
                 "message": e.message,
                 "suggestion": e.suggestion,
-                "transaction_id": ctx.id
+                "transaction_id": ctx.id,
             }
 
 
@@ -799,9 +741,10 @@ async def nginx_restart(dry_run: bool = False) -> dict:
         dict: Operation result with health status
     """
     from datetime import datetime
-    from core.docker_service import docker_service, DockerServiceError
+
+    from core.docker_service import DockerServiceError, docker_service
+    from core.health_checker import HealthCheckError, health_checker
     from core.transaction_context import transactional_operation
-    from core.health_checker import health_checker, HealthCheckError
     from models.transaction import OperationType
 
     if dry_run:
@@ -816,22 +759,20 @@ async def nginx_restart(dry_run: bool = False) -> dict:
                 "container_running": status.get("running", False),
                 "would_drop_connections": True,
                 "estimated_downtime_ms": 2000,
-                "warnings": ["This will drop all active connections"]
+                "warnings": ["This will drop all active connections"],
             }
         except DockerServiceError as e:
             return {
                 "dry_run": True,
                 "would_succeed": False,
                 "operation": "nginx_restart",
-                "message": f"Would fail: {e.message}"
+                "message": f"Would fail: {e.message}",
             }
 
     start_time = datetime.utcnow()
 
     async with transactional_operation(
-        operation=OperationType.NGINX_RESTART,
-        resource_type="nginx",
-        resource_id="restart"
+        operation=OperationType.NGINX_RESTART, resource_type="nginx", resource_id="restart"
     ) as ctx:
         try:
             await docker_service.restart_container()
@@ -854,7 +795,7 @@ async def nginx_restart(dry_run: bool = False) -> dict:
                 "duration_ms": duration_ms,
                 "health_verified": health_verified,
                 "transaction_id": ctx.id,
-                "suggestions": ["Verify sites are accessible", "Check for connection errors in logs"]
+                "suggestions": ["Verify sites are accessible", "Check for connection errors in logs"],
             }
 
         except DockerServiceError as e:
@@ -863,7 +804,7 @@ async def nginx_restart(dry_run: bool = False) -> dict:
                 "operation": "restart",
                 "message": e.message,
                 "suggestion": e.suggestion,
-                "transaction_id": ctx.id
+                "transaction_id": ctx.id,
             }
 
 
@@ -875,7 +816,8 @@ async def nginx_test() -> dict:
         dict: Validation result with details
     """
     from datetime import datetime
-    from core.docker_service import docker_service, DockerServiceError
+
+    from core.docker_service import DockerServiceError, docker_service
 
     try:
         success, stdout, stderr = await docker_service.test_config()
@@ -886,27 +828,24 @@ async def nginx_test() -> dict:
             "stdout": stdout,
             "stderr": stderr,
             "tested_at": datetime.utcnow().isoformat(),
-            "suggestions": [] if success else ["Review the error messages", "Check syntax in affected files"]
+            "suggestions": [] if success else ["Review the error messages", "Check syntax in affected files"],
         }
 
     except DockerServiceError as e:
-        return {
-            "success": False,
-            "message": e.message,
-            "suggestion": e.suggestion
-        }
+        return {"success": False, "message": e.message, "suggestion": e.suggestion}
 
 
 # =============================================================================
 # Certificate Management Tools
 # =============================================================================
 
+
 async def request_certificate(
     domain: str,
-    alt_names: Optional[List[str]] = None,
+    alt_names: list[str] | None = None,
     auto_renew: bool = True,
     auto_reload: bool = True,
-    dry_run: bool = False
+    dry_run: bool = False,
 ) -> dict:
     """
     Request a Let's Encrypt SSL certificate.
@@ -921,17 +860,14 @@ async def request_certificate(
     Returns:
         dict: Operation result with certificate details
     """
-    from core.cert_manager import get_cert_manager, CertificateError
+    from core.cert_manager import CertificateError, get_cert_manager
 
     try:
         cert_manager = get_cert_manager()
 
         if dry_run:
             result = await cert_manager.request_certificate(
-                domain=domain,
-                alt_names=alt_names or [],
-                auto_renew=auto_renew,
-                dry_run=True
+                domain=domain, alt_names=alt_names or [], auto_renew=auto_renew, dry_run=True
             )
             return {
                 "dry_run": True,
@@ -943,14 +879,11 @@ async def request_certificate(
                 "domain_points_to_server": result.domain_points_to_server,
                 "port_80_accessible": result.port_80_accessible,
                 "warnings": result.warnings,
-                "suggestions": result.suggestions if hasattr(result, 'suggestions') else []
+                "suggestions": result.suggestions if hasattr(result, "suggestions") else [],
             }
 
         result = await cert_manager.request_certificate(
-            domain=domain,
-            alt_names=alt_names or [],
-            auto_renew=auto_renew,
-            dry_run=False
+            domain=domain, alt_names=alt_names or [], auto_renew=auto_renew, dry_run=False
         )
 
         cert_data = None
@@ -959,7 +892,7 @@ async def request_certificate(
                 "domain": result.certificate.domain,
                 "status": result.certificate.status.value if result.certificate.status else None,
                 "not_after": result.certificate.not_after.isoformat() if result.certificate.not_after else None,
-                "days_until_expiry": result.certificate.days_until_expiry
+                "days_until_expiry": result.certificate.days_until_expiry,
             }
 
         return {
@@ -971,32 +904,23 @@ async def request_certificate(
             "reload_required": result.reload_required,
             "reloaded": result.reloaded,
             "suggestions": result.suggestions,
-            "warnings": result.warnings
+            "warnings": result.warnings,
         }
 
     except CertificateError as e:
-        return {
-            "success": False,
-            "message": e.message,
-            "domain": e.domain,
-            "suggestion": e.suggestion
-        }
+        return {"success": False, "message": e.message, "domain": e.domain, "suggestion": e.suggestion}
     except Exception as e:
         logger.error(f"Error requesting certificate: {e}")
-        return {
-            "success": False,
-            "message": f"Failed to request certificate: {str(e)}",
-            "domain": domain
-        }
+        return {"success": False, "message": f"Failed to request certificate: {e!s}", "domain": domain}
 
 
 async def upload_certificate(
     domain: str,
     certificate_pem: str,
     private_key_pem: str,
-    chain_pem: Optional[str] = None,
+    chain_pem: str | None = None,
     auto_reload: bool = True,
-    dry_run: bool = False
+    dry_run: bool = False,
 ) -> dict:
     """
     Upload a custom SSL certificate.
@@ -1012,17 +936,13 @@ async def upload_certificate(
     Returns:
         dict: Operation result with certificate details
     """
-    from core.cert_manager import get_cert_manager, CertificateError
+    from core.cert_manager import CertificateError, get_cert_manager
 
     try:
         cert_manager = get_cert_manager()
 
         result = await cert_manager.upload_custom_certificate(
-            domain=domain,
-            cert_pem=certificate_pem,
-            key_pem=private_key_pem,
-            chain_pem=chain_pem,
-            dry_run=dry_run
+            domain=domain, cert_pem=certificate_pem, key_pem=private_key_pem, chain_pem=chain_pem, dry_run=dry_run
         )
 
         if dry_run:
@@ -1032,7 +952,7 @@ async def upload_certificate(
                 "operation": "upload_certificate",
                 "message": result.message,
                 "domain": domain,
-                "warnings": result.warnings if hasattr(result, 'warnings') else []
+                "warnings": result.warnings if hasattr(result, "warnings") else [],
             }
 
         cert_data = None
@@ -1041,7 +961,7 @@ async def upload_certificate(
                 "domain": result.certificate.domain,
                 "status": result.certificate.status.value if result.certificate.status else None,
                 "not_after": result.certificate.not_after.isoformat() if result.certificate.not_after else None,
-                "days_until_expiry": result.certificate.days_until_expiry
+                "days_until_expiry": result.certificate.days_until_expiry,
             }
 
         return {
@@ -1051,31 +971,17 @@ async def upload_certificate(
             "transaction_id": result.transaction_id,
             "certificate": cert_data,
             "suggestions": result.suggestions,
-            "warnings": result.warnings
+            "warnings": result.warnings,
         }
 
     except CertificateError as e:
-        return {
-            "success": False,
-            "message": e.message,
-            "domain": e.domain,
-            "suggestion": e.suggestion
-        }
+        return {"success": False, "message": e.message, "domain": e.domain, "suggestion": e.suggestion}
     except Exception as e:
         logger.error(f"Error uploading certificate: {e}")
-        return {
-            "success": False,
-            "message": f"Failed to upload certificate: {str(e)}",
-            "domain": domain
-        }
+        return {"success": False, "message": f"Failed to upload certificate: {e!s}", "domain": domain}
 
 
-async def renew_certificate(
-    domain: str,
-    force: bool = False,
-    auto_reload: bool = True,
-    dry_run: bool = False
-) -> dict:
+async def renew_certificate(domain: str, force: bool = False, auto_reload: bool = True, dry_run: bool = False) -> dict:
     """
     Manually trigger certificate renewal.
 
@@ -1088,16 +994,12 @@ async def renew_certificate(
     Returns:
         dict: Operation result with certificate details
     """
-    from core.cert_manager import get_cert_manager, CertificateError
+    from core.cert_manager import CertificateError, get_cert_manager
 
     try:
         cert_manager = get_cert_manager()
 
-        result = await cert_manager.renew_certificate(
-            domain=domain,
-            force=force,
-            dry_run=dry_run
-        )
+        result = await cert_manager.renew_certificate(domain=domain, force=force, dry_run=dry_run)
 
         if dry_run:
             return {
@@ -1106,7 +1008,7 @@ async def renew_certificate(
                 "operation": "renew_certificate",
                 "message": result.message,
                 "domain": domain,
-                "warnings": result.warnings if hasattr(result, 'warnings') else []
+                "warnings": result.warnings if hasattr(result, "warnings") else [],
             }
 
         cert_data = None
@@ -1115,7 +1017,7 @@ async def renew_certificate(
                 "domain": result.certificate.domain,
                 "status": result.certificate.status.value if result.certificate.status else None,
                 "not_after": result.certificate.not_after.isoformat() if result.certificate.not_after else None,
-                "days_until_expiry": result.certificate.days_until_expiry
+                "days_until_expiry": result.certificate.days_until_expiry,
             }
 
         return {
@@ -1125,30 +1027,17 @@ async def renew_certificate(
             "transaction_id": result.transaction_id,
             "certificate": cert_data,
             "suggestions": result.suggestions,
-            "warnings": result.warnings
+            "warnings": result.warnings,
         }
 
     except CertificateError as e:
-        return {
-            "success": False,
-            "message": e.message,
-            "domain": e.domain,
-            "suggestion": e.suggestion
-        }
+        return {"success": False, "message": e.message, "domain": e.domain, "suggestion": e.suggestion}
     except Exception as e:
         logger.error(f"Error renewing certificate: {e}")
-        return {
-            "success": False,
-            "message": f"Failed to renew certificate: {str(e)}",
-            "domain": domain
-        }
+        return {"success": False, "message": f"Failed to renew certificate: {e!s}", "domain": domain}
 
 
-async def revoke_certificate(
-    domain: str,
-    auto_reload: bool = True,
-    dry_run: bool = False
-) -> dict:
+async def revoke_certificate(domain: str, auto_reload: bool = True, dry_run: bool = False) -> dict:
     """
     Revoke and remove a certificate.
 
@@ -1160,15 +1049,12 @@ async def revoke_certificate(
     Returns:
         dict: Operation result
     """
-    from core.cert_manager import get_cert_manager, CertificateError
+    from core.cert_manager import CertificateError, get_cert_manager
 
     try:
         cert_manager = get_cert_manager()
 
-        result = await cert_manager.revoke_certificate(
-            domain=domain,
-            dry_run=dry_run
-        )
+        result = await cert_manager.revoke_certificate(domain=domain, dry_run=dry_run)
 
         if dry_run:
             return {
@@ -1177,7 +1063,7 @@ async def revoke_certificate(
                 "operation": "revoke_certificate",
                 "message": result.message,
                 "domain": domain,
-                "warnings": result.warnings if hasattr(result, 'warnings') else []
+                "warnings": result.warnings if hasattr(result, "warnings") else [],
             }
 
         return {
@@ -1186,23 +1072,14 @@ async def revoke_certificate(
             "domain": result.domain,
             "transaction_id": result.transaction_id,
             "suggestions": result.suggestions,
-            "warnings": result.warnings
+            "warnings": result.warnings,
         }
 
     except CertificateError as e:
-        return {
-            "success": False,
-            "message": e.message,
-            "domain": e.domain,
-            "suggestion": e.suggestion
-        }
+        return {"success": False, "message": e.message, "domain": e.domain, "suggestion": e.suggestion}
     except Exception as e:
         logger.error(f"Error revoking certificate: {e}")
-        return {
-            "success": False,
-            "message": f"Failed to revoke certificate: {str(e)}",
-            "domain": domain
-        }
+        return {"success": False, "message": f"Failed to revoke certificate: {e!s}", "domain": domain}
 
 
 async def diagnose_ssl(domain: str) -> dict:
@@ -1236,7 +1113,7 @@ async def diagnose_ssl(domain: str) -> dict:
             "chain_issues": result.chain_issues,
             "ready_for_ssl": result.ready_for_ssl,
             "issues": result.issues,
-            "suggestions": result.suggestions
+            "suggestions": result.suggestions,
         }
 
     except Exception as e:
@@ -1244,8 +1121,8 @@ async def diagnose_ssl(domain: str) -> dict:
         return {
             "domain": domain,
             "ready_for_ssl": False,
-            "issues": [f"Diagnostic failed: {str(e)}"],
-            "suggestions": ["Check DNS configuration", "Verify domain spelling"]
+            "issues": [f"Diagnostic failed: {e!s}"],
+            "suggestions": ["Check DNS configuration", "Verify domain spelling"],
         }
 
 
@@ -1253,10 +1130,8 @@ async def diagnose_ssl(domain: str) -> dict:
 # Transaction Management Tools
 # =============================================================================
 
-async def rollback_transaction(
-    transaction_id: str,
-    reason: Optional[str] = None
-) -> dict:
+
+async def rollback_transaction(transaction_id: str, reason: str | None = None) -> dict:
     """
     Rollback a transaction to restore previous state.
 
@@ -1279,46 +1154,40 @@ async def rollback_transaction(
                 "success": False,
                 "message": f"Cannot rollback transaction: {rollback_reason}",
                 "original_transaction_id": transaction_id,
-                "suggestions": ["View transaction details: nginx://transactions/" + transaction_id]
+                "suggestions": ["View transaction details: nginx://transactions/" + transaction_id],
             }
 
-        result = await txn_manager.rollback_transaction(
-            transaction_id=transaction_id,
-            reason=reason
-        )
+        result = await txn_manager.rollback_transaction(transaction_id=transaction_id, reason=reason)
 
         return {
             "success": result.success,
             "rollback_transaction_id": result.rollback_transaction_id,
             "original_transaction_id": result.original_transaction_id,
             "message": result.message,
-            "warnings": result.warnings
+            "warnings": result.warnings,
         }
 
     except Exception as e:
         logger.error(f"Error rolling back transaction {transaction_id}: {e}")
-        return {
-            "success": False,
-            "message": f"Failed to rollback: {str(e)}",
-            "original_transaction_id": transaction_id
-        }
+        return {"success": False, "message": f"Failed to rollback: {e!s}", "original_transaction_id": transaction_id}
 
 
 # =============================================================================
 # Workflow Tools (Phase 4)
 # =============================================================================
 
+
 async def execute_setup_site_workflow(
     name: str,
-    server_names: List[str],
+    server_names: list[str],
     site_type: str,
     listen_port: int = 80,
-    root_path: Optional[str] = None,
-    proxy_pass: Optional[str] = None,
+    root_path: str | None = None,
+    proxy_pass: str | None = None,
     request_ssl: bool = False,
-    ssl_alt_names: Optional[List[str]] = None,
+    ssl_alt_names: list[str] | None = None,
     auto_renew: bool = True,
-    dry_run: bool = False
+    dry_run: bool = False,
 ) -> dict:
     """
     Execute the setup-site workflow.
@@ -1367,11 +1236,11 @@ async def execute_setup_site_workflow(
 
 async def execute_migrate_site_workflow(
     name: str,
-    server_names: Optional[List[str]] = None,
-    listen_port: Optional[int] = None,
-    root_path: Optional[str] = None,
-    proxy_pass: Optional[str] = None,
-    dry_run: bool = False
+    server_names: list[str] | None = None,
+    listen_port: int | None = None,
+    root_path: str | None = None,
+    proxy_pass: str | None = None,
+    dry_run: bool = False,
 ) -> dict:
     """
     Execute the migrate-site workflow.

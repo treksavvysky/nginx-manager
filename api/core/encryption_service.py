@@ -7,7 +7,6 @@ cryptography library to encrypt private keys stored on disk and in the database.
 
 import base64
 import logging
-from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
@@ -30,7 +29,7 @@ class EncryptionService:
     """
 
     def __init__(self):
-        self._fernet: Optional[Fernet] = None
+        self._fernet: Fernet | None = None
         self._enabled = False
         self._initialize()
 
@@ -118,13 +117,11 @@ class EncryptionService:
         try:
             return self._fernet.decrypt(data.encode("utf-8")).decode("utf-8")
         except InvalidToken:
-            raise ValueError(
-                "Failed to decrypt data. The encryption key may have changed."
-            )
+            raise ValueError("Failed to decrypt data. The encryption key may have changed.")
 
 
 # Singleton instance
-_encryption_service: Optional[EncryptionService] = None
+_encryption_service: EncryptionService | None = None
 
 
 def get_encryption_service() -> EncryptionService:

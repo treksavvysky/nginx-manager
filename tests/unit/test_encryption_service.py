@@ -4,8 +4,9 @@ Unit tests for encryption service.
 Tests Fernet-based encryption for private keys at rest.
 """
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestEncryptionServiceDisabled:
@@ -13,11 +14,12 @@ class TestEncryptionServiceDisabled:
 
     def test_passthrough_when_disabled(self):
         """Encryption returns plaintext when not enabled."""
-        with patch('core.encryption_service.settings') as mock_settings:
+        with patch("core.encryption_service.settings") as mock_settings:
             mock_settings.encrypt_private_keys = False
             mock_settings.private_key_encryption_key = None
 
             from core.encryption_service import EncryptionService
+
             svc = EncryptionService()
 
             assert svc.enabled is False
@@ -27,11 +29,12 @@ class TestEncryptionServiceDisabled:
 
     def test_passthrough_string_when_disabled(self):
         """String encrypt/decrypt returns unchanged when not enabled."""
-        with patch('core.encryption_service.settings') as mock_settings:
+        with patch("core.encryption_service.settings") as mock_settings:
             mock_settings.encrypt_private_keys = False
             mock_settings.private_key_encryption_key = None
 
             from core.encryption_service import EncryptionService
+
             svc = EncryptionService()
 
             text = "-----BEGIN PRIVATE KEY-----\ntest"
@@ -40,22 +43,24 @@ class TestEncryptionServiceDisabled:
 
     def test_warning_when_enabled_without_key(self):
         """Logs warning when encryption requested but no key set."""
-        with patch('core.encryption_service.settings') as mock_settings:
+        with patch("core.encryption_service.settings") as mock_settings:
             mock_settings.encrypt_private_keys = True
             mock_settings.private_key_encryption_key = None
 
             from core.encryption_service import EncryptionService
+
             svc = EncryptionService()
 
             assert svc.enabled is False
 
     def test_is_encrypted_false_for_plaintext(self):
         """is_encrypted returns False for plaintext PEM data."""
-        with patch('core.encryption_service.settings') as mock_settings:
+        with patch("core.encryption_service.settings") as mock_settings:
             mock_settings.encrypt_private_keys = False
             mock_settings.private_key_encryption_key = None
 
             from core.encryption_service import EncryptionService
+
             svc = EncryptionService()
 
             data = b"-----BEGIN PRIVATE KEY-----\ntest"
@@ -67,11 +72,12 @@ class TestEncryptionServiceEnabled:
 
     def _make_service(self):
         """Create an encryption service with a test passphrase."""
-        with patch('core.encryption_service.settings') as mock_settings:
+        with patch("core.encryption_service.settings") as mock_settings:
             mock_settings.encrypt_private_keys = True
             mock_settings.private_key_encryption_key = "test-passphrase-for-unit-tests"
 
             from core.encryption_service import EncryptionService
+
             return EncryptionService()
 
     def test_enabled_with_valid_key(self):
@@ -141,11 +147,12 @@ class TestEncryptionServiceEnabled:
         encrypted = svc1.encrypt(b"secret")
 
         # Create service with different key
-        with patch('core.encryption_service.settings') as mock_settings:
+        with patch("core.encryption_service.settings") as mock_settings:
             mock_settings.encrypt_private_keys = True
             mock_settings.private_key_encryption_key = "different-passphrase-entirely"
 
             from core.encryption_service import EncryptionService
+
             svc2 = EncryptionService()
 
         with pytest.raises(ValueError, match="encryption key may have changed"):
@@ -163,11 +170,12 @@ class TestEncryptionServiceSingleton:
 
     def test_get_encryption_service_returns_same_instance(self):
         """Singleton returns same instance."""
-        with patch('core.encryption_service.settings') as mock_settings:
+        with patch("core.encryption_service.settings") as mock_settings:
             mock_settings.encrypt_private_keys = False
             mock_settings.private_key_encryption_key = None
 
             import core.encryption_service as mod
+
             # Reset singleton
             mod._encryption_service = None
 

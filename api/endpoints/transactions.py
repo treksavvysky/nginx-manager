@@ -6,23 +6,20 @@ operations for configuration changes.
 """
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.auth_dependency import get_current_auth, require_role
+from core.auth_dependency import require_role
+from core.transaction_manager import get_transaction_manager
 from models.auth import AuthContext, Role
-
 from models.transaction import (
-    TransactionStatus,
     OperationType,
-    TransactionSummary,
-    TransactionDetail,
-    TransactionListResponse,
     RollbackRequest,
     RollbackResult,
+    TransactionDetail,
+    TransactionListResponse,
+    TransactionStatus,
 )
-from core.transaction_manager import get_transaction_manager
 
 logger = logging.getLogger(__name__)
 
@@ -52,21 +49,14 @@ captures before/after state, enabling rollback if needed.
 **Pagination:**
 - Use `limit` and `offset` for pagination
 - Default 50 transactions per page
-"""
+""",
 )
 async def list_transactions(
-    status: Optional[TransactionStatus] = Query(
-        None,
-        description="Filter by status (pending, in_progress, completed, failed, rolled_back)"
+    status: TransactionStatus | None = Query(
+        None, description="Filter by status (pending, in_progress, completed, failed, rolled_back)"
     ),
-    operation: Optional[OperationType] = Query(
-        None,
-        description="Filter by operation type"
-    ),
-    resource_type: Optional[str] = Query(
-        None,
-        description="Filter by resource type (site, nginx, certificate)"
-    ),
+    operation: OperationType | None = Query(None, description="Filter by operation type"),
+    resource_type: str | None = Query(None, description="Filter by resource type (site, nginx, certificate)"),
     limit: int = Query(50, ge=1, le=200, description="Maximum transactions to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     auth: AuthContext = Depends(require_role(Role.VIEWER)),
@@ -75,11 +65,7 @@ async def list_transactions(
     transaction_manager = get_transaction_manager()
 
     return await transaction_manager.list_transactions(
-        limit=limit,
-        offset=offset,
-        status=status,
-        operation=operation,
-        resource_type=resource_type
+        limit=limit, offset=offset, status=status, operation=operation, resource_type=resource_type
     )
 
 
@@ -101,9 +87,11 @@ Returns:
 - Review exactly what changed in a transaction
 - Determine if rollback is appropriate
 - Understand failure causes from error details
-"""
+""",
 )
-async def get_transaction(transaction_id: str, auth: AuthContext = Depends(require_role(Role.VIEWER))) -> TransactionDetail:
+async def get_transaction(
+    transaction_id: str, auth: AuthContext = Depends(require_role(Role.VIEWER))
+) -> TransactionDetail:
     """Get detailed transaction information."""
     transaction_manager = get_transaction_manager()
 
@@ -114,8 +102,8 @@ async def get_transaction(transaction_id: str, auth: AuthContext = Depends(requi
             detail={
                 "error": "transaction_not_found",
                 "message": f"Transaction '{transaction_id}' not found",
-                "suggestion": "Check the transaction ID and try again"
-            }
+                "suggestion": "Check the transaction ID and try again",
+            },
         )
 
     return transaction
@@ -148,8 +136,8 @@ Restore configuration to state before a transaction.
     responses={
         200: {"description": "Rollback result (check 'success' field)"},
         404: {"description": "Transaction not found"},
-        400: {"description": "Transaction cannot be rolled back"}
-    }
+        400: {"description": "Transaction cannot be rolled back"},
+    },
 )
 async def rollback_transaction(
     transaction_id: str,
@@ -167,8 +155,8 @@ async def rollback_transaction(
             detail={
                 "error": "transaction_not_found",
                 "message": f"Transaction '{transaction_id}' not found",
-                "suggestion": "Check the transaction ID and try again"
-            }
+                "suggestion": "Check the transaction ID and try again",
+            },
         )
 
     # Check if rollback is possible
@@ -180,15 +168,12 @@ async def rollback_transaction(
                 "error": "rollback_not_allowed",
                 "message": f"Cannot rollback transaction: {reason}",
                 "transaction_id": transaction_id,
-                "transaction_status": transaction.status.value
-            }
+                "transaction_status": transaction.status.value,
+            },
         )
 
     # Perform rollback
-    result = await transaction_manager.rollback_transaction(
-        transaction_id=transaction_id,
-        reason=request.reason
-    )
+    result = await transaction_manager.rollback_transaction(transaction_id=transaction_id, reason=request.reason)
 
     return result
 
@@ -200,9 +185,11 @@ async def rollback_transaction(
 Check if a transaction can be rolled back.
 
 Returns whether rollback is possible and the reason if not.
-"""
+""",
 )
-async def check_rollback_eligibility(transaction_id: str, auth: AuthContext = Depends(require_role(Role.VIEWER))) -> dict:
+async def check_rollback_eligibility(
+    transaction_id: str, auth: AuthContext = Depends(require_role(Role.VIEWER))
+) -> dict:
     """Check if a transaction can be rolled back."""
     transaction_manager = get_transaction_manager()
 
@@ -210,10 +197,7 @@ async def check_rollback_eligibility(transaction_id: str, auth: AuthContext = De
     if not transaction:
         raise HTTPException(
             status_code=404,
-            detail={
-                "error": "transaction_not_found",
-                "message": f"Transaction '{transaction_id}' not found"
-            }
+            detail={"error": "transaction_not_found", "message": f"Transaction '{transaction_id}' not found"},
         )
 
     can_rollback, reason = await transaction_manager.can_rollback(transaction_id)
@@ -222,5 +206,5 @@ async def check_rollback_eligibility(transaction_id: str, auth: AuthContext = De
         "transaction_id": transaction_id,
         "can_rollback": can_rollback,
         "reason": reason if not can_rollback else None,
-        "transaction_status": transaction.status.value
+        "transaction_status": transaction.status.value,
     }

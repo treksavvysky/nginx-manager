@@ -7,8 +7,8 @@ Tests NGINX directive injection prevention and proxy_pass URL validation.
 import pytest
 from pydantic import ValidationError
 
-from core.config_generator.generator import sanitize_nginx_value, ConfigGeneratorError
-from models.site_requests import SiteCreateRequest, SiteUpdateRequest, SiteType
+from core.config_generator.generator import ConfigGeneratorError, sanitize_nginx_value
+from models.site_requests import SiteCreateRequest, SiteType, SiteUpdateRequest
 
 
 class TestSanitizeNginxValue:
@@ -91,27 +91,27 @@ class TestProxyPassValidation:
     def test_valid_http_url(self):
         """Standard HTTP URL accepted."""
         req = SiteCreateRequest(
-            name="test", server_names=["test.com"],
-            site_type=SiteType.REVERSE_PROXY,
-            proxy_pass="http://localhost:3000"
+            name="test", server_names=["test.com"], site_type=SiteType.REVERSE_PROXY, proxy_pass="http://localhost:3000"
         )
         assert req.proxy_pass == "http://localhost:3000"
 
     def test_valid_https_url(self):
         """HTTPS URL accepted."""
         req = SiteCreateRequest(
-            name="test", server_names=["test.com"],
+            name="test",
+            server_names=["test.com"],
             site_type=SiteType.REVERSE_PROXY,
-            proxy_pass="https://backend.internal:8443"
+            proxy_pass="https://backend.internal:8443",
         )
         assert req.proxy_pass == "https://backend.internal:8443"
 
     def test_valid_url_with_path(self):
         """URL with path accepted."""
         req = SiteCreateRequest(
-            name="test", server_names=["test.com"],
+            name="test",
+            server_names=["test.com"],
             site_type=SiteType.REVERSE_PROXY,
-            proxy_pass="http://localhost:3000/api/v1"
+            proxy_pass="http://localhost:3000/api/v1",
         )
         assert req.proxy_pass == "http://localhost:3000/api/v1"
 
@@ -119,63 +119,67 @@ class TestProxyPassValidation:
         """Non-HTTP schemes rejected."""
         with pytest.raises(ValidationError, match="HTTP or HTTPS"):
             SiteCreateRequest(
-                name="test", server_names=["test.com"],
+                name="test",
+                server_names=["test.com"],
                 site_type=SiteType.REVERSE_PROXY,
-                proxy_pass="ftp://files.internal"
+                proxy_pass="ftp://files.internal",
             )
 
     def test_rejects_no_hostname(self):
         """URL without hostname rejected."""
         with pytest.raises(ValidationError, match="hostname"):
             SiteCreateRequest(
-                name="test", server_names=["test.com"],
-                site_type=SiteType.REVERSE_PROXY,
-                proxy_pass="http://"
+                name="test", server_names=["test.com"], site_type=SiteType.REVERSE_PROXY, proxy_pass="http://"
             )
 
     def test_rejects_credentials_in_url(self):
         """URL with embedded credentials rejected."""
         with pytest.raises(ValidationError, match="credentials"):
             SiteCreateRequest(
-                name="test", server_names=["test.com"],
+                name="test",
+                server_names=["test.com"],
                 site_type=SiteType.REVERSE_PROXY,
-                proxy_pass="http://admin:secret@backend:3000"
+                proxy_pass="http://admin:secret@backend:3000",
             )
 
     def test_rejects_query_string(self):
         """URL with query string rejected."""
         with pytest.raises(ValidationError, match="query"):
             SiteCreateRequest(
-                name="test", server_names=["test.com"],
+                name="test",
+                server_names=["test.com"],
                 site_type=SiteType.REVERSE_PROXY,
-                proxy_pass="http://localhost:3000?key=value"
+                proxy_pass="http://localhost:3000?key=value",
             )
 
     def test_rejects_fragment(self):
         """URL with fragment rejected."""
         with pytest.raises(ValidationError, match="fragment"):
             SiteCreateRequest(
-                name="test", server_names=["test.com"],
+                name="test",
+                server_names=["test.com"],
                 site_type=SiteType.REVERSE_PROXY,
-                proxy_pass="http://localhost:3000#section"
+                proxy_pass="http://localhost:3000#section",
             )
 
     def test_rejects_aws_metadata_endpoint(self):
         """AWS metadata endpoint rejected (SSRF prevention)."""
         with pytest.raises(ValidationError, match="metadata"):
             SiteCreateRequest(
-                name="test", server_names=["test.com"],
+                name="test",
+                server_names=["test.com"],
                 site_type=SiteType.REVERSE_PROXY,
-                proxy_pass="http://169.254.169.254/latest/meta-data"
+                proxy_pass="http://169.254.169.254/latest/meta-data",
             )
 
     def test_rejects_gcp_metadata_endpoint(self):
         """GCP metadata endpoint rejected (SSRF prevention)."""
         with pytest.raises(ValidationError, match="metadata"):
             SiteCreateRequest(
-                name="test", server_names=["test.com"],
+                name="test",
+                server_names=["test.com"],
                 site_type=SiteType.REVERSE_PROXY,
-                proxy_pass="http://metadata.google.internal/computeMetadata/v1"
+                proxy_pass="http://metadata.google.internal/computeMetadata/v1",
             )
 
     def test_update_rejects_credentials(self):

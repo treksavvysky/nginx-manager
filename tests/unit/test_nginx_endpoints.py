@@ -5,25 +5,24 @@ These tests mock the Docker service, health checker, and transaction context to 
 endpoint logic without requiring actual Docker connectivity or database.
 """
 
-import pytest
-from datetime import datetime
-from unittest.mock import AsyncMock, patch, MagicMock
-from pathlib import Path
-from contextlib import asynccontextmanager
-
 import sys
+from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "api"))
 
-from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
-from main import app
 from core.docker_service import (
-    DockerServiceError,
     ContainerNotFoundError,
     DockerUnavailableError,
 )
 from core.health_checker import HealthCheckError
+from main import app
 
 
 class MockTransactionContext:
@@ -78,10 +77,7 @@ class TestNginxStatus:
         with patch("endpoints.nginx.docker_service") as mock_docker:
             mock_docker.get_container_status = AsyncMock(return_value=mock_container_status)
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/nginx/status")
 
             assert response.status_code == 200
@@ -108,10 +104,7 @@ class TestNginxStatus:
         with patch("endpoints.nginx.docker_service") as mock_docker:
             mock_docker.get_container_status = AsyncMock(return_value=stopped_status)
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/nginx/status")
 
             assert response.status_code == 200
@@ -126,14 +119,11 @@ class TestNginxStatus:
                 side_effect=ContainerNotFoundError(
                     "Container 'nginx-manager-nginx' not found",
                     error_type="container_not_found",
-                    suggestion="Ensure NGINX container is running"
+                    suggestion="Ensure NGINX container is running",
                 )
             )
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/nginx/status")
 
             assert response.status_code == 503
@@ -148,14 +138,11 @@ class TestNginxStatus:
                 side_effect=DockerUnavailableError(
                     "Cannot connect to Docker daemon",
                     error_type="docker_unavailable",
-                    suggestion="Ensure Docker daemon is running"
+                    suggestion="Ensure Docker daemon is running",
                 )
             )
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/nginx/status")
 
             assert response.status_code == 503
@@ -172,18 +159,16 @@ class TestNginxReload:
             "running": True,
         }
 
-        with patch("endpoints.nginx.docker_service") as mock_docker, \
-             patch("endpoints.nginx.health_checker") as mock_health, \
-             patch("endpoints.nginx.transactional_operation", mock_transactional_operation):
-
+        with (
+            patch("endpoints.nginx.docker_service") as mock_docker,
+            patch("endpoints.nginx.health_checker") as mock_health,
+            patch("endpoints.nginx.transactional_operation", mock_transactional_operation),
+        ):
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
             mock_docker.reload_nginx = AsyncMock(return_value=(True, "", ""))
             mock_health.verify_health = AsyncMock(return_value=True)
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/reload")
 
             assert response.status_code == 200
@@ -201,17 +186,14 @@ class TestNginxReload:
             "running": True,
         }
 
-        with patch("endpoints.nginx.docker_service") as mock_docker, \
-             patch("endpoints.nginx.transactional_operation", mock_transactional_operation):
+        with (
+            patch("endpoints.nginx.docker_service") as mock_docker,
+            patch("endpoints.nginx.transactional_operation", mock_transactional_operation),
+        ):
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
-            mock_docker.reload_nginx = AsyncMock(
-                return_value=(False, "", "nginx: configuration file test failed")
-            )
+            mock_docker.reload_nginx = AsyncMock(return_value=(False, "", "nginx: configuration file test failed"))
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/reload")
 
             assert response.status_code == 200
@@ -236,23 +218,19 @@ class TestNginxReload:
         mock_txn_manager = MagicMock()
         mock_txn_manager.rollback_transaction = AsyncMock(return_value=mock_rollback_result)
 
-        with patch("endpoints.nginx.docker_service") as mock_docker, \
-             patch("endpoints.nginx.health_checker") as mock_health, \
-             patch("endpoints.nginx.transactional_operation", mock_transactional_operation), \
-             patch("endpoints.nginx.get_transaction_manager", return_value=mock_txn_manager), \
-             patch("endpoints.nginx.settings") as mock_settings:
-
+        with (
+            patch("endpoints.nginx.docker_service") as mock_docker,
+            patch("endpoints.nginx.health_checker") as mock_health,
+            patch("endpoints.nginx.transactional_operation", mock_transactional_operation),
+            patch("endpoints.nginx.get_transaction_manager", return_value=mock_txn_manager),
+            patch("endpoints.nginx.settings") as mock_settings,
+        ):
             mock_settings.auto_rollback_on_failure = True
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
             mock_docker.reload_nginx = AsyncMock(return_value=(True, "", ""))
-            mock_health.verify_health = AsyncMock(
-                side_effect=HealthCheckError("Health check failed", attempts=5)
-            )
+            mock_health.verify_health = AsyncMock(side_effect=HealthCheckError("Health check failed", attempts=5))
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/reload")
 
             assert response.status_code == 200
@@ -271,22 +249,18 @@ class TestNginxReload:
             "running": True,
         }
 
-        with patch("endpoints.nginx.docker_service") as mock_docker, \
-             patch("endpoints.nginx.health_checker") as mock_health, \
-             patch("endpoints.nginx.transactional_operation", mock_transactional_operation), \
-             patch("endpoints.nginx.settings") as mock_settings:
-
+        with (
+            patch("endpoints.nginx.docker_service") as mock_docker,
+            patch("endpoints.nginx.health_checker") as mock_health,
+            patch("endpoints.nginx.transactional_operation", mock_transactional_operation),
+            patch("endpoints.nginx.settings") as mock_settings,
+        ):
             mock_settings.auto_rollback_on_failure = False
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
             mock_docker.reload_nginx = AsyncMock(return_value=(True, "", ""))
-            mock_health.verify_health = AsyncMock(
-                side_effect=HealthCheckError("Health check failed", attempts=5)
-            )
+            mock_health.verify_health = AsyncMock(side_effect=HealthCheckError("Health check failed", attempts=5))
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/reload")
 
             assert response.status_code == 200
@@ -308,19 +282,17 @@ class TestNginxRestart:
             "running": True,
         }
 
-        with patch("endpoints.nginx.docker_service") as mock_docker, \
-             patch("endpoints.nginx.health_checker") as mock_health, \
-             patch("endpoints.nginx.transactional_operation", mock_transactional_operation), \
-             patch("asyncio.sleep", new_callable=AsyncMock):
-
+        with (
+            patch("endpoints.nginx.docker_service") as mock_docker,
+            patch("endpoints.nginx.health_checker") as mock_health,
+            patch("endpoints.nginx.transactional_operation", mock_transactional_operation),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
             mock_docker.restart_container = AsyncMock(return_value=True)
             mock_health.verify_health = AsyncMock(return_value=True)
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/restart")
 
             assert response.status_code == 200
@@ -332,20 +304,17 @@ class TestNginxRestart:
     @pytest.mark.asyncio
     async def test_restart_container_not_found(self):
         """Test restart when container doesn't exist."""
-        with patch("endpoints.nginx.docker_service") as mock_docker, \
-             patch("endpoints.nginx.transactional_operation", mock_transactional_operation):
+        with (
+            patch("endpoints.nginx.docker_service") as mock_docker,
+            patch("endpoints.nginx.transactional_operation", mock_transactional_operation),
+        ):
             mock_docker.get_container_status = AsyncMock(
                 side_effect=ContainerNotFoundError(
-                    "Container not found",
-                    error_type="container_not_found",
-                    suggestion="Start the container first"
+                    "Container not found", error_type="container_not_found", suggestion="Start the container first"
                 )
             )
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/restart")
 
             assert response.status_code == 503
@@ -359,17 +328,10 @@ class TestNginxConfigTest:
         """Test successful config validation."""
         with patch("endpoints.nginx.docker_service") as mock_docker:
             mock_docker.test_config = AsyncMock(
-                return_value=(
-                    True,
-                    "",
-                    "nginx: configuration file /etc/nginx/nginx.conf test is successful"
-                )
+                return_value=(True, "", "nginx: configuration file /etc/nginx/nginx.conf test is successful")
             )
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/test")
 
             assert response.status_code == 200
@@ -382,17 +344,10 @@ class TestNginxConfigTest:
         """Test failed config validation."""
         with patch("endpoints.nginx.docker_service") as mock_docker:
             mock_docker.test_config = AsyncMock(
-                return_value=(
-                    False,
-                    "",
-                    "nginx: [emerg] unknown directive \"invalid\" in /etc/nginx/conf.d/test.conf:1"
-                )
+                return_value=(False, "", 'nginx: [emerg] unknown directive "invalid" in /etc/nginx/conf.d/test.conf:1')
             )
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/test")
 
             assert response.status_code == 200
@@ -407,16 +362,11 @@ class TestNginxConfigTest:
         with patch("endpoints.nginx.docker_service") as mock_docker:
             mock_docker.test_config = AsyncMock(
                 side_effect=ContainerNotFoundError(
-                    "Container not found",
-                    error_type="container_not_found",
-                    suggestion="Start the container"
+                    "Container not found", error_type="container_not_found", suggestion="Start the container"
                 )
             )
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.post("/nginx/test")
 
             assert response.status_code == 503
@@ -439,10 +389,7 @@ class TestHealthEndpoint:
         with patch("core.docker_service.docker_service") as mock_docker:
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/health")
 
             assert response.status_code == 200
@@ -463,10 +410,7 @@ class TestHealthEndpoint:
         with patch("core.docker_service.docker_service") as mock_docker:
             mock_docker.get_container_status = AsyncMock(return_value=mock_status)
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/health")
 
             assert response.status_code == 200
@@ -480,16 +424,11 @@ class TestHealthEndpoint:
         with patch("core.docker_service.docker_service") as mock_docker:
             mock_docker.get_container_status = AsyncMock(
                 side_effect=DockerUnavailableError(
-                    "Docker daemon not running",
-                    error_type="docker_unavailable",
-                    suggestion="Start Docker"
+                    "Docker daemon not running", error_type="docker_unavailable", suggestion="Start Docker"
                 )
             )
 
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 response = await client.get("/health")
 
             assert response.status_code == 200

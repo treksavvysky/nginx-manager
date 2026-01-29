@@ -6,12 +6,11 @@ can include certificate status without N+1 database queries.
 """
 
 import logging
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 
-async def get_certificate_map() -> Dict[str, dict]:
+async def get_certificate_map() -> dict[str, dict]:
     """
     Load all certificates and build a domain → cert summary lookup.
 
@@ -24,7 +23,7 @@ async def get_certificate_map() -> Dict[str, dict]:
     cert_manager = get_cert_manager()
     certs = await cert_manager.list_certificates()
 
-    cert_map: Dict[str, dict] = {}
+    cert_map: dict[str, dict] = {}
     for cert in certs:
         summary = {
             "domain": cert.domain,
@@ -48,10 +47,7 @@ async def get_certificate_map() -> Dict[str, dict]:
     return cert_map
 
 
-def match_certificate(
-    server_names: List[str],
-    cert_map: Dict[str, dict]
-) -> Optional[dict]:
+def match_certificate(server_names: list[str], cert_map: dict[str, dict]) -> dict | None:
     """
     Find a matching certificate for a list of server names.
 

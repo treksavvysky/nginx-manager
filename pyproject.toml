@@ -1,9 +1,9 @@
 [project]
 name = "nginx-manager"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.5.0"
+description = "AI-agent-first REST API for managing NGINX configurations, SSL certificates, and reverse proxy setups"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.104.0",
     "httpx>=0.25.0",
@@ -17,9 +17,58 @@ dependencies = [
     "crossplane>=0.5.8",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "pytest-cov>=6.0",
+    "pre-commit>=4.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+src = ["api", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "RUF",   # ruff-specific
+]
+ignore = [
+    "E501",   # line too long (enforced by line-length setting)
+    "B008",   # function calls in argument defaults (FastAPI Depends pattern)
+    "B904",   # raise from in except (widespread, fix incrementally)
+    "N805",   # first argument not named self (Pydantic validators)
+    "RUF013", # implicit Optional (widespread, fix incrementally)
+    "UP007",  # X | Y union syntax (widespread, fix incrementally)
+    "SIM102", # nested if (readability preference)
+    "SIM105", # contextlib.suppress (stylistic preference)
+    "SIM108", # ternary operator (readability preference)
+    "SIM110", # any() instead of for loop (readability preference)
+    "SIM117", # single with statement (readability preference)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "B017",  # assert blind exception (common test pattern)
+    "E741",  # ambiguous variable name (l used for location in tests)
+    "F841",  # unused local variable (mock setup in tests)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "core", "models", "endpoints"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 pythonpath = ["api"]
+addopts = "--tb=short -q"

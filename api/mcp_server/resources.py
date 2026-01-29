@@ -6,7 +6,6 @@ Each resource has a URI pattern and returns structured data.
 """
 
 import logging
-from typing import Optional
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -22,18 +21,12 @@ async def get_sites_resource() -> dict:
         dict: List of sites with summary statistics
     """
     from config import get_nginx_conf_path
-    from core.config_manager import nginx_parser, ConfigAdapter
+    from core.config_manager import ConfigAdapter, nginx_parser
 
     conf_dir = get_nginx_conf_path()
 
     if not conf_dir.exists():
-        return {
-            "sites": [],
-            "total": 0,
-            "enabled_count": 0,
-            "disabled_count": 0,
-            "ssl_enabled_count": 0
-        }
+        return {"sites": [], "total": 0, "enabled_count": 0, "disabled_count": 0, "ssl_enabled_count": 0}
 
     # Find all .conf and .conf.disabled files
     conf_files = list(conf_dir.glob("*.conf"))
@@ -61,7 +54,7 @@ async def get_sites_resource() -> dict:
                     "root_path": rich_dict.get("root_path"),
                     "enabled": rich_dict.get("enabled", True),
                     "status": rich_dict.get("status", "unknown"),
-                    "certificate": None
+                    "certificate": None,
                 }
 
                 if site_data["ssl_enabled"]:
@@ -76,6 +69,7 @@ async def get_sites_resource() -> dict:
     cert_count = 0
     try:
         from core.cert_helpers import get_certificate_map, match_certificate
+
         cert_map = await get_certificate_map()
         for site_data in sites:
             cert = match_certificate(site_data.get("server_names", []), cert_map)
@@ -91,7 +85,7 @@ async def get_sites_resource() -> dict:
         "enabled_count": len([s for s in sites if s["enabled"]]),
         "disabled_count": len([s for s in sites if not s["enabled"]]),
         "ssl_enabled_count": ssl_enabled_count,
-        "certificate_count": cert_count
+        "certificate_count": cert_count,
     }
 
 
@@ -108,7 +102,7 @@ async def get_site_resource(name: str) -> dict:
         dict: Detailed site configuration or error
     """
     from config import get_nginx_conf_path
-    from core.config_manager import nginx_parser, ConfigAdapter
+    from core.config_manager import ConfigAdapter, nginx_parser
 
     conf_dir = get_nginx_conf_path()
     conf_file = conf_dir / f"{name}.conf"
@@ -128,8 +122,8 @@ async def get_site_resource(name: str) -> dict:
             "error": f"Site '{name}' not found",
             "suggestions": [
                 f"Create the site with: create_site(name='{name}', ...)",
-                "List available sites with: nginx://sites"
-            ]
+                "List available sites with: nginx://sites",
+            ],
         }
 
     try:
@@ -139,8 +133,8 @@ async def get_site_resource(name: str) -> dict:
                 "error": f"Failed to parse configuration for '{name}'",
                 "suggestions": [
                     "Check the configuration file for syntax errors",
-                    "Use nginx_test tool to validate configuration"
-                ]
+                    "Use nginx_test tool to validate configuration",
+                ],
             }
 
         rich_dict = ConfigAdapter.to_rich_dict(parsed_config)
@@ -150,6 +144,7 @@ async def get_site_resource(name: str) -> dict:
         rich_dict["certificate"] = None
         try:
             from core.cert_helpers import get_certificate_map, match_certificate
+
             cert_map = await get_certificate_map()
             server_names = rich_dict.get("server_names", [])
             cert = match_certificate(server_names, cert_map)
@@ -169,7 +164,9 @@ async def get_site_resource(name: str) -> dict:
         if cert_info:
             days = cert_info.get("days_until_expiry")
             if days is not None and days <= 30:
-                suggestions.append(f"Certificate expires in {days} days — renew with: renew_certificate(domain='{name}')")
+                suggestions.append(
+                    f"Certificate expires in {days} days — renew with: renew_certificate(domain='{name}')"
+                )
 
         rich_dict["suggestions"] = suggestions
         return rich_dict
@@ -177,12 +174,12 @@ async def get_site_resource(name: str) -> dict:
     except Exception as e:
         logger.error(f"Error parsing site {name}: {e}")
         return {
-            "error": f"Error reading site configuration: {str(e)}",
-            "suggestions": ["Check file permissions", "Verify configuration syntax"]
+            "error": f"Error reading site configuration: {e!s}",
+            "suggestions": ["Check file permissions", "Verify configuration syntax"],
         }
 
 
-async def get_certificates_resource(status_filter: Optional[str] = None) -> dict:
+async def get_certificates_resource(status_filter: str | None = None) -> dict:
     """
     Get all SSL certificates with status.
 
@@ -225,7 +222,7 @@ async def get_certificates_resource(status_filter: Optional[str] = None) -> dict
                 "issuer": cert.issuer,
                 "not_after": cert.not_after.isoformat() if cert.not_after else None,
                 "days_until_expiry": cert.days_until_expiry,
-                "auto_renew": cert.auto_renew
+                "auto_renew": cert.auto_renew,
             }
             cert_list.append(cert_data)
 
@@ -251,7 +248,7 @@ async def get_certificates_resource(status_filter: Optional[str] = None) -> dict
             "valid_count": valid_count,
             "expiring_soon_count": expiring_soon_count,
             "expired_count": expired_count,
-            "suggestions": suggestions
+            "suggestions": suggestions,
         }
 
     except Exception as e:
@@ -260,7 +257,7 @@ async def get_certificates_resource(status_filter: Optional[str] = None) -> dict
             "certificates": [],
             "total": 0,
             "error": str(e),
-            "suggestions": ["Check database connection", "Verify SSL directory permissions"]
+            "suggestions": ["Check database connection", "Verify SSL directory permissions"],
         }
 
 
@@ -288,8 +285,8 @@ async def get_certificate_resource(domain: str) -> dict:
                 "suggestions": [
                     f"Request a certificate with: request_certificate(domain='{domain}')",
                     f"Check DNS configuration with: diagnose_ssl(domain='{domain}')",
-                    "List all certificates with: nginx://certificates"
-                ]
+                    "List all certificates with: nginx://certificates",
+                ],
             }
 
         # Generate suggestions based on certificate state
@@ -322,15 +319,15 @@ async def get_certificate_resource(domain: str) -> dict:
             "auto_renew": cert.auto_renew,
             "last_renewed": cert.last_renewed.isoformat() if cert.last_renewed else None,
             "suggestions": suggestions,
-            "warnings": warnings
+            "warnings": warnings,
         }
 
     except Exception as e:
         logger.error(f"Error getting certificate for {domain}: {e}")
         return {
-            "error": f"Error retrieving certificate: {str(e)}",
+            "error": f"Error retrieving certificate: {e!s}",
             "domain": domain,
-            "suggestions": ["Check certificate database", "Verify domain spelling"]
+            "suggestions": ["Check certificate database", "Verify domain spelling"],
         }
 
 
@@ -343,12 +340,11 @@ async def get_health_resource() -> dict:
     Returns:
         dict: Comprehensive system health information
     """
-    from core.docker_service import docker_service, DockerServiceError
-    from core.cert_manager import get_cert_manager
-    from core.event_store import get_event_store
     from config import get_nginx_conf_path
+    from core.cert_manager import get_cert_manager
+    from core.docker_service import DockerServiceError, docker_service
+    from core.event_store import get_event_store
     from models.certificate import CertificateStatus
-    from models.event import EventFilters
 
     # Get NGINX status
     nginx_status = {
@@ -357,20 +353,22 @@ async def get_health_resource() -> dict:
         "uptime_seconds": None,
         "worker_count": None,
         "active_connections": None,
-        "config_valid": None
+        "config_valid": None,
     }
 
     try:
         container_status = await docker_service.get_container_status()
         if container_status.get("running"):
-            nginx_status.update({
-                "status": "running",
-                "container_id": container_status.get("container_id"),
-                "uptime_seconds": container_status.get("uptime_seconds"),
-                "worker_count": container_status.get("worker_count"),
-                "active_connections": container_status.get("active_connections"),
-                "health_status": container_status.get("health_status", "unknown")
-            })
+            nginx_status.update(
+                {
+                    "status": "running",
+                    "container_id": container_status.get("container_id"),
+                    "uptime_seconds": container_status.get("uptime_seconds"),
+                    "worker_count": container_status.get("worker_count"),
+                    "active_connections": container_status.get("active_connections"),
+                    "health_status": container_status.get("health_status", "unknown"),
+                }
+            )
 
             # Test config validity
             success, _, _ = await docker_service.test_config()
@@ -387,12 +385,7 @@ async def get_health_resource() -> dict:
     disabled_sites = len(list(conf_dir.glob("*.conf.disabled"))) if conf_dir.exists() else 0
 
     # Get certificate summary
-    cert_summary = {
-        "total": 0,
-        "valid": 0,
-        "expiring_soon": 0,
-        "expired": 0
-    }
+    cert_summary = {"total": 0, "valid": 0, "expiring_soon": 0, "expired": 0}
 
     try:
         cert_manager = get_cert_manager()
@@ -419,9 +412,7 @@ async def get_health_resource() -> dict:
     overall_status = "healthy"
     if nginx_status["status"] != "running":
         overall_status = "unhealthy"
-    elif cert_summary["expired"] > 0 or recent_events["errors"] > 0:
-        overall_status = "degraded"
-    elif nginx_status.get("config_valid") is False:
+    elif cert_summary["expired"] > 0 or recent_events["errors"] > 0 or nginx_status.get("config_valid") is False:
         overall_status = "degraded"
 
     # Generate suggestions based on state
@@ -447,22 +438,15 @@ async def get_health_resource() -> dict:
         "status": overall_status,
         "timestamp": datetime.utcnow().isoformat(),
         "nginx": nginx_status,
-        "sites": {
-            "total": enabled_sites + disabled_sites,
-            "enabled": enabled_sites,
-            "disabled": disabled_sites
-        },
+        "sites": {"total": enabled_sites + disabled_sites, "enabled": enabled_sites, "disabled": disabled_sites},
         "certificates": cert_summary,
         "recent_events": recent_events,
         "suggestions": suggestions,
-        "warnings": warnings
+        "warnings": warnings,
     }
 
 
-async def get_events_resource(
-    severity: Optional[str] = None,
-    limit: int = 50
-) -> dict:
+async def get_events_resource(severity: str | None = None, limit: int = 50) -> dict:
     """
     Get recent system events.
 
@@ -476,17 +460,16 @@ async def get_events_resource(
     Returns:
         dict: List of recent events
     """
+    from datetime import datetime, timedelta
+
     from core.event_store import get_event_store
     from models.event import EventFilters, EventSeverity
-    from datetime import datetime, timedelta
 
     try:
         event_store = get_event_store()
 
         # Build filters
-        filters = EventFilters(
-            since=datetime.utcnow() - timedelta(hours=24)
-        )
+        filters = EventFilters(since=datetime.utcnow() - timedelta(hours=24))
 
         if severity:
             try:
@@ -498,37 +481,28 @@ async def get_events_resource(
 
         events = []
         for event in result.events:
-            events.append({
-                "id": event.id,
-                "timestamp": event.timestamp.isoformat() if event.timestamp else None,
-                "severity": event.severity.value if event.severity else "info",
-                "category": event.category.value if event.category else "system",
-                "action": event.action,
-                "resource_type": event.resource_type,
-                "resource_id": event.resource_id,
-                "message": event.message,
-                "transaction_id": event.transaction_id
-            })
+            events.append(
+                {
+                    "id": event.id,
+                    "timestamp": event.timestamp.isoformat() if event.timestamp else None,
+                    "severity": event.severity.value if event.severity else "info",
+                    "category": event.category.value if event.category else "system",
+                    "action": event.action,
+                    "resource_type": event.resource_type,
+                    "resource_id": event.resource_id,
+                    "message": event.message,
+                    "transaction_id": event.transaction_id,
+                }
+            )
 
-        return {
-            "events": events,
-            "total": result.total,
-            "filtered_by": {"severity": severity} if severity else None
-        }
+        return {"events": events, "total": result.total, "filtered_by": {"severity": severity} if severity else None}
 
     except Exception as e:
         logger.error(f"Error listing events: {e}")
-        return {
-            "events": [],
-            "total": 0,
-            "error": str(e)
-        }
+        return {"events": [], "total": 0, "error": str(e)}
 
 
-async def get_transactions_resource(
-    status: Optional[str] = None,
-    limit: int = 20
-) -> dict:
+async def get_transactions_resource(status: str | None = None, limit: int = 20) -> dict:
     """
     Get recent transactions with rollback capability.
 
@@ -556,42 +530,36 @@ async def get_transactions_resource(
             except ValueError:
                 pass
 
-        result = await txn_manager.list_transactions(
-            limit=limit,
-            offset=0,
-            status=status_enum
-        )
+        result = await txn_manager.list_transactions(limit=limit, offset=0, status=status_enum)
 
         transactions = []
         for txn in result.transactions:
             can_rollback, rollback_reason = await txn_manager.can_rollback(txn.id)
 
-            transactions.append({
-                "id": txn.id,
-                "operation": txn.operation.value if txn.operation else None,
-                "status": txn.status.value if txn.status else None,
-                "resource_type": txn.resource_type,
-                "resource_id": txn.resource_id,
-                "created_at": txn.created_at.isoformat() if txn.created_at else None,
-                "completed_at": txn.completed_at.isoformat() if txn.completed_at else None,
-                "duration_ms": txn.duration_ms,
-                "can_rollback": can_rollback,
-                "rollback_reason": rollback_reason if not can_rollback else None
-            })
+            transactions.append(
+                {
+                    "id": txn.id,
+                    "operation": txn.operation.value if txn.operation else None,
+                    "status": txn.status.value if txn.status else None,
+                    "resource_type": txn.resource_type,
+                    "resource_id": txn.resource_id,
+                    "created_at": txn.created_at.isoformat() if txn.created_at else None,
+                    "completed_at": txn.completed_at.isoformat() if txn.completed_at else None,
+                    "duration_ms": txn.duration_ms,
+                    "can_rollback": can_rollback,
+                    "rollback_reason": rollback_reason if not can_rollback else None,
+                }
+            )
 
         return {
             "transactions": transactions,
             "total": result.total,
-            "filtered_by": {"status": status} if status else None
+            "filtered_by": {"status": status} if status else None,
         }
 
     except Exception as e:
         logger.error(f"Error listing transactions: {e}")
-        return {
-            "transactions": [],
-            "total": 0,
-            "error": str(e)
-        }
+        return {"transactions": [], "total": 0, "error": str(e)}
 
 
 async def get_transaction_resource(transaction_id: str) -> dict:
@@ -615,10 +583,7 @@ async def get_transaction_resource(transaction_id: str) -> dict:
         if not detail:
             return {
                 "error": f"Transaction '{transaction_id}' not found",
-                "suggestions": [
-                    "List recent transactions: nginx://transactions",
-                    "Check the transaction ID for typos"
-                ]
+                "suggestions": ["List recent transactions: nginx://transactions", "Check the transaction ID for typos"],
             }
 
         can_rollback, rollback_reason = await txn_manager.can_rollback(transaction_id)
@@ -635,14 +600,14 @@ async def get_transaction_resource(transaction_id: str) -> dict:
             "duration_ms": detail.duration_ms,
             "error_message": detail.error_message,
             "can_rollback": can_rollback,
-            "rollback_reason": rollback_reason if not can_rollback else None
+            "rollback_reason": rollback_reason if not can_rollback else None,
         }
 
         if detail.diff:
             result["diff"] = {
                 "files_changed": detail.diff.files_changed,
                 "total_additions": detail.diff.total_additions,
-                "total_deletions": detail.diff.total_deletions
+                "total_deletions": detail.diff.total_deletions,
             }
 
         # Add suggestions
@@ -658,7 +623,4 @@ async def get_transaction_resource(transaction_id: str) -> dict:
 
     except Exception as e:
         logger.error(f"Error getting transaction {transaction_id}: {e}")
-        return {
-            "error": f"Error retrieving transaction: {str(e)}",
-            "transaction_id": transaction_id
-        }
+        return {"error": f"Error retrieving transaction: {e!s}", "transaction_id": transaction_id}

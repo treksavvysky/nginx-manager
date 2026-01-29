@@ -1,6 +1,6 @@
 # NGINX configuration management module
 
-from .crossplane_parser import CrossplaneParser, nginx_parser
 from .adapter import ConfigAdapter
+from .crossplane_parser import CrossplaneParser, nginx_parser
 
-__all__ = ["CrossplaneParser", "ConfigAdapter", "nginx_parser"]
+__all__ = ["ConfigAdapter", "CrossplaneParser", "nginx_parser"]

@@ -7,9 +7,9 @@ and API key authentication.
 """
 
 import logging
-from typing import Optional, Callable
+from collections.abc import Callable
 
-from fastapi import Request, HTTPException, Depends
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
 
 from config import settings
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-def _extract_bearer_token(request: Request) -> Optional[str]:
+def _extract_bearer_token(request: Request) -> str | None:
     """Extract Bearer token from Authorization header."""
     auth_header = request.headers.get("Authorization")
     if not auth_header:
@@ -34,7 +34,7 @@ def _extract_bearer_token(request: Request) -> Optional[str]:
 
 async def get_current_auth(
     request: Request,
-    api_key: Optional[str] = Depends(_api_key_header),
+    api_key: str | None = Depends(_api_key_header),
 ) -> AuthContext:
     """
     Resolve the current authentication context.
@@ -52,6 +52,7 @@ async def get_current_auth(
         )
 
     from core.auth_service import get_auth_service
+
     auth_service = get_auth_service()
 
     # 1. Check for JWT Bearer token
@@ -95,6 +96,7 @@ def require_role(min_role: Role) -> Callable:
         @router.get("/", dependencies=[Depends(require_role(Role.VIEWER))])
         async def list_items(...):
     """
+
     async def _check_role(
         auth: AuthContext = Depends(get_current_auth),
     ) -> AuthContext:

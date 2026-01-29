@@ -7,24 +7,24 @@ for all mutation transactions in the system.
 
 import logging
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Any
 
-from models.transaction import (
-    Transaction,
-    TransactionStatus,
-    OperationType,
-    TransactionSummary,
-    TransactionDetail,
-    TransactionDiff,
-    FileDiff,
-    RollbackResult,
-    TransactionListResponse,
-)
-from models.event import EventSeverity
-from core.database import get_database, serialize_json, deserialize_json
+from config import settings
+from core.database import deserialize_json, get_database, serialize_json
 from core.event_store import get_event_store
 from core.snapshot_service import get_snapshot_service
-from config import settings
+from models.event import EventSeverity
+from models.transaction import (
+    FileDiff,
+    OperationType,
+    RollbackResult,
+    Transaction,
+    TransactionDetail,
+    TransactionDiff,
+    TransactionListResponse,
+    TransactionStatus,
+    TransactionSummary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,8 @@ class TransactionManager:
         self,
         operation: OperationType,
         resource_type: str,
-        resource_id: Optional[str] = None,
-        request_data: Optional[Dict[str, Any]] = None
+        resource_id: str | None = None,
+        request_data: dict[str, Any] | None = None,
     ) -> Transaction:
         """
         Create a new transaction and capture before-state snapshot.
@@ -61,20 +61,14 @@ class TransactionManager:
             resource_type=resource_type,
             resource_id=resource_id,
             request_data=request_data,
-            status=TransactionStatus.PENDING
+            status=TransactionStatus.PENDING,
         )
 
         # Capture before-state snapshot
         if settings.auto_backup:
-            snapshot = await self.snapshot_service.create_snapshot(
-                transaction.id,
-                stage="before"
-            )
+            snapshot = await self.snapshot_service.create_snapshot(transaction.id, stage="before")
             transaction.snapshot_path = snapshot.path
-            transaction.before_state = {
-                "files": snapshot.files,
-                "total_size": snapshot.total_size
-            }
+            transaction.before_state = {"files": snapshot.files, "total_size": snapshot.total_size}
 
         # Save transaction to database
         await self._save_transaction(transaction)
@@ -88,14 +82,14 @@ class TransactionManager:
             transaction_id=transaction.id,
             resource_type=resource_type,
             resource_id=resource_id,
-            details={"request_data": request_data}
+            details={"request_data": request_data},
         )
 
         logger.info(f"Transaction {transaction.id} created: {operation.value}")
 
         return transaction
 
-    async def start_transaction(self, transaction_id: str) -> Optional[Transaction]:
+    async def start_transaction(self, transaction_id: str) -> Transaction | None:
         """Mark a transaction as in progress."""
         transaction = await self.get_transaction(transaction_id)
         if not transaction:
@@ -111,11 +105,11 @@ class TransactionManager:
     async def complete_transaction(
         self,
         transaction_id: str,
-        result_data: Optional[Dict[str, Any]] = None,
-        after_state: Optional[Dict[str, Any]] = None,
+        result_data: dict[str, Any] | None = None,
+        after_state: dict[str, Any] | None = None,
         nginx_validated: bool = False,
-        health_verified: bool = False
-    ) -> Optional[Transaction]:
+        health_verified: bool = False,
+    ) -> Transaction | None:
         """
         Mark transaction as completed successfully.
 
@@ -149,14 +143,8 @@ class TransactionManager:
 
         # Capture after-state snapshot
         if settings.auto_backup:
-            snapshot = await self.snapshot_service.create_snapshot(
-                transaction_id,
-                stage="after"
-            )
-            transaction.after_state = after_state or {
-                "files": snapshot.files,
-                "total_size": snapshot.total_size
-            }
+            snapshot = await self.snapshot_service.create_snapshot(transaction_id, stage="after")
+            transaction.after_state = after_state or {"files": snapshot.files, "total_size": snapshot.total_size}
 
         await self._update_transaction(transaction)
 
@@ -172,8 +160,8 @@ class TransactionManager:
             details={
                 "duration_ms": transaction.duration_ms,
                 "nginx_validated": nginx_validated,
-                "health_verified": health_verified
-            }
+                "health_verified": health_verified,
+            },
         )
 
         logger.info(f"Transaction {transaction_id} completed in {transaction.duration_ms}ms")
@@ -184,9 +172,9 @@ class TransactionManager:
         self,
         transaction_id: str,
         error_message: str,
-        error_details: Optional[Dict[str, Any]] = None,
-        auto_rollback: bool = True
-    ) -> Optional[Transaction]:
+        error_details: dict[str, Any] | None = None,
+        auto_rollback: bool = True,
+    ) -> Transaction | None:
         """
         Mark transaction as failed and optionally rollback.
 
@@ -224,25 +212,21 @@ class TransactionManager:
             transaction_id=transaction_id,
             resource_type=transaction.resource_type,
             resource_id=transaction.resource_id,
-            details=error_details
+            details=error_details,
         )
 
         logger.error(f"Transaction {transaction_id} failed: {error_message}")
 
         # Auto-rollback if enabled
         if auto_rollback and settings.auto_rollback_on_failure:
-            can_rollback, reason = await self.can_rollback(transaction_id)
+            can_rollback, _reason = await self.can_rollback(transaction_id)
             if can_rollback:
                 logger.info(f"Auto-rolling back failed transaction {transaction_id}")
                 await self.rollback_transaction(transaction_id, reason="Auto-rollback on failure")
 
         return transaction
 
-    async def rollback_transaction(
-        self,
-        transaction_id: str,
-        reason: Optional[str] = None
-    ) -> RollbackResult:
+    async def rollback_transaction(self, transaction_id: str, reason: str | None = None) -> RollbackResult:
         """
         Restore configuration to state before transaction.
 
@@ -254,7 +238,7 @@ class TransactionManager:
             RollbackResult with details about the rollback
         """
         from core.docker_service import docker_service
-        from core.health_checker import health_checker, HealthCheckError
+        from core.health_checker import HealthCheckError, health_checker
 
         original = await self.get_transaction(transaction_id)
         if not original:
@@ -262,7 +246,7 @@ class TransactionManager:
                 success=False,
                 rollback_transaction_id="",
                 original_transaction_id=transaction_id,
-                message=f"Transaction {transaction_id} not found"
+                message=f"Transaction {transaction_id} not found",
             )
 
         can_rollback, rollback_reason = await self.can_rollback(transaction_id)
@@ -271,7 +255,7 @@ class TransactionManager:
                 success=False,
                 rollback_transaction_id="",
                 original_transaction_id=transaction_id,
-                message=f"Cannot rollback: {rollback_reason}"
+                message=f"Cannot rollback: {rollback_reason}",
             )
 
         # Create rollback transaction
@@ -279,22 +263,16 @@ class TransactionManager:
             operation=OperationType.ROLLBACK,
             resource_type=original.resource_type,
             resource_id=original.resource_id,
-            request_data={
-                "original_transaction_id": transaction_id,
-                "reason": reason
-            }
+            request_data={"original_transaction_id": transaction_id, "reason": reason},
         )
 
         await self.start_transaction(rollback_txn.id)
 
-        warnings: List[str] = []
+        warnings: list[str] = []
 
         try:
             # Restore configuration from snapshot
-            restore_result = await self.snapshot_service.restore_snapshot(
-                transaction_id,
-                stage="before"
-            )
+            restore_result = await self.snapshot_service.restore_snapshot(transaction_id, stage="before")
 
             if not restore_result.success:
                 raise Exception(f"Restore failed: {', '.join(restore_result.errors)}")
@@ -302,7 +280,7 @@ class TransactionManager:
             warnings.extend(restore_result.errors)
 
             # Validate restored configuration
-            success, stdout, stderr = await docker_service.test_config()
+            success, _stdout, stderr = await docker_service.test_config()
             if not success:
                 raise Exception(f"Configuration validation failed: {stderr}")
 
@@ -323,12 +301,9 @@ class TransactionManager:
             # Complete rollback transaction
             await self.complete_transaction(
                 rollback_txn.id,
-                result_data={
-                    "files_restored": restore_result.files_restored,
-                    "nginx_reloaded": reload_success
-                },
+                result_data={"files_restored": restore_result.files_restored, "nginx_reloaded": reload_success},
                 nginx_validated=rollback_txn.nginx_validated,
-                health_verified=rollback_txn.health_verified
+                health_verified=rollback_txn.health_verified,
             )
 
             # Update original transaction
@@ -340,7 +315,7 @@ class TransactionManager:
             await self.event_store.record_event(
                 category="transaction",
                 action="rolled_back",
-                message=f"Transaction rolled back successfully",
+                message="Transaction rolled back successfully",
                 severity=EventSeverity.WARNING,
                 transaction_id=transaction_id,
                 resource_type=original.resource_type,
@@ -348,8 +323,8 @@ class TransactionManager:
                 details={
                     "rollback_transaction_id": rollback_txn.id,
                     "reason": reason,
-                    "files_restored": restore_result.files_restored
-                }
+                    "files_restored": restore_result.files_restored,
+                },
             )
 
             return RollbackResult(
@@ -359,17 +334,17 @@ class TransactionManager:
                 restored_state={
                     "files_restored": restore_result.files_restored,
                     "nginx_reloaded": reload_success,
-                    "health_verified": rollback_txn.health_verified
+                    "health_verified": rollback_txn.health_verified,
                 },
                 message="Configuration restored to state before transaction",
-                warnings=warnings
+                warnings=warnings,
             )
 
         except Exception as e:
             await self.fail_transaction(
                 rollback_txn.id,
                 error_message=str(e),
-                auto_rollback=False  # Don't recursively rollback
+                auto_rollback=False,  # Don't recursively rollback
             )
 
             return RollbackResult(
@@ -377,7 +352,7 @@ class TransactionManager:
                 rollback_transaction_id=rollback_txn.id,
                 original_transaction_id=transaction_id,
                 message=f"Rollback failed: {e}",
-                warnings=warnings
+                warnings=warnings,
             )
 
     async def can_rollback(self, transaction_id: str) -> tuple[bool, str]:
@@ -406,19 +381,16 @@ class TransactionManager:
 
         return True, ""
 
-    async def get_transaction(self, transaction_id: str) -> Optional[Transaction]:
+    async def get_transaction(self, transaction_id: str) -> Transaction | None:
         """Get a transaction by ID."""
-        row = await self.db.fetch_one(
-            "SELECT * FROM transactions WHERE id = ?",
-            (transaction_id,)
-        )
+        row = await self.db.fetch_one("SELECT * FROM transactions WHERE id = ?", (transaction_id,))
 
         if not row:
             return None
 
         return self._row_to_transaction(row)
 
-    async def get_transaction_detail(self, transaction_id: str) -> Optional[TransactionDetail]:
+    async def get_transaction_detail(self, transaction_id: str) -> TransactionDetail | None:
         """Get full transaction details including diff."""
         transaction = await self.get_transaction(transaction_id)
         if not transaction:
@@ -431,7 +403,7 @@ class TransactionManager:
             files_changed=diff_data.get("files_changed", 0),
             total_additions=diff_data.get("total_additions", 0),
             total_deletions=diff_data.get("total_deletions", 0),
-            files=[FileDiff(**f) for f in diff_data.get("files", [])]
+            files=[FileDiff(**f) for f in diff_data.get("files", [])],
         )
 
         # Check rollback eligibility
@@ -442,20 +414,20 @@ class TransactionManager:
             diff=diff,
             affected_files=[f.file_path for f in diff.files],
             can_rollback=can_rollback,
-            rollback_reason=rollback_reason if not can_rollback else None
+            rollback_reason=rollback_reason if not can_rollback else None,
         )
 
     async def list_transactions(
         self,
         limit: int = 50,
         offset: int = 0,
-        status: Optional[TransactionStatus] = None,
-        operation: Optional[OperationType] = None,
-        resource_type: Optional[str] = None
+        status: TransactionStatus | None = None,
+        operation: OperationType | None = None,
+        resource_type: str | None = None,
     ) -> TransactionListResponse:
         """List transactions with filtering."""
         where_clauses = []
-        params: List[Any] = []
+        params: list[Any] = []
 
         if status:
             where_clauses.append("status = ?")
@@ -473,8 +445,7 @@ class TransactionManager:
 
         # Get total count
         count_result = await self.db.fetch_one(
-            f"SELECT COUNT(*) as count FROM transactions WHERE {where_sql}",
-            tuple(params)
+            f"SELECT COUNT(*) as count FROM transactions WHERE {where_sql}", tuple(params)
         )
         total = count_result["count"] if count_result else 0
 
@@ -498,7 +469,7 @@ class TransactionManager:
                 created_at=datetime.fromisoformat(row["created_at"]),
                 completed_at=datetime.fromisoformat(row["completed_at"]) if row.get("completed_at") else None,
                 duration_ms=row.get("duration_ms"),
-                error_message=row.get("error_message")
+                error_message=row.get("error_message"),
             )
             for row in rows
         ]
@@ -508,7 +479,7 @@ class TransactionManager:
             total=total,
             limit=limit,
             offset=offset,
-            has_more=(offset + len(transactions)) < total
+            has_more=(offset + len(transactions)) < total,
         )
 
     async def _save_transaction(self, transaction: Transaction) -> None:
@@ -533,7 +504,7 @@ class TransactionManager:
             "parent_transaction_id": transaction.parent_transaction_id,
             "rollback_transaction_id": transaction.rollback_transaction_id,
             "nginx_validated": transaction.nginx_validated,
-            "health_verified": transaction.health_verified
+            "health_verified": transaction.health_verified,
         }
 
         await self.db.insert("transactions", data)
@@ -551,12 +522,12 @@ class TransactionManager:
             "error_details_json": serialize_json(transaction.error_details),
             "rollback_transaction_id": transaction.rollback_transaction_id,
             "nginx_validated": transaction.nginx_validated,
-            "health_verified": transaction.health_verified
+            "health_verified": transaction.health_verified,
         }
 
         await self.db.update("transactions", transaction.id, data)
 
-    def _row_to_transaction(self, row: Dict[str, Any]) -> Transaction:
+    def _row_to_transaction(self, row: dict[str, Any]) -> Transaction:
         """Convert a database row to a Transaction object."""
         return Transaction(
             id=row["id"],
@@ -578,12 +549,12 @@ class TransactionManager:
             parent_transaction_id=row.get("parent_transaction_id"),
             rollback_transaction_id=row.get("rollback_transaction_id"),
             nginx_validated=bool(row.get("nginx_validated")),
-            health_verified=bool(row.get("health_verified"))
+            health_verified=bool(row.get("health_verified")),
         )
 
 
 # Singleton instance
-_transaction_manager: Optional[TransactionManager] = None
+_transaction_manager: TransactionManager | None = None
 
 
 def get_transaction_manager() -> TransactionManager:

@@ -7,18 +7,17 @@ for obtaining SSL certificates from Let's Encrypt.
 
 import asyncio
 import logging
-from pathlib import Path
-from typing import Optional, List, Tuple
 from datetime import datetime
+from pathlib import Path
 
+import josepy as jose
+from acme import challenges, client, messages
+from acme import errors as acme_errors
+from acme.client import ClientV2
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, ec
-from cryptography.x509.oid import NameOID, ExtensionOID
-import josepy as jose
-
-from acme import challenges, client, errors as acme_errors, messages
-from acme.client import ClientV2
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import ExtensionOID, NameOID
 
 from config import settings
 from models.certificate import ACMEAccount
@@ -37,16 +36,19 @@ class ACMEError(Exception):
 
 class ACMEChallengeError(ACMEError):
     """ACME challenge failed."""
+
     pass
 
 
 class ACMEAuthorizationError(ACMEError):
     """ACME authorization failed."""
+
     pass
 
 
 class ACMEOrderError(ACMEError):
     """ACME order failed."""
+
     pass
 
 
@@ -59,8 +61,8 @@ class ACMEService:
     """
 
     def __init__(self):
-        self._client: Optional[ClientV2] = None
-        self._account_key: Optional[jose.JWK] = None
+        self._client: ClientV2 | None = None
+        self._account_key: jose.JWK | None = None
         self._challenge_dir = Path(settings.acme_challenge_dir)
         self._account_loader = None
 
@@ -99,10 +101,7 @@ class ACMEService:
 
         # Generate new RSA key for account
         logger.info("Generating new ACME account key")
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048
-        )
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         self._account_key = jose.JWKRSA(key=private_key)
         return self._account_key
 
@@ -116,18 +115,13 @@ class ACMEService:
         # Create client in thread pool (blocking network call)
         def create_client():
             net = client.ClientNetwork(account_key, user_agent="nginx-manager/1.0")
-            directory = messages.Directory.from_json(
-                net.get(self.directory_url).json()
-            )
+            directory = messages.Directory.from_json(net.get(self.directory_url).json())
             return ClientV2(directory, net=net)
 
         self._client = await asyncio.to_thread(create_client)
         return self._client
 
-    async def register_account(
-        self,
-        email: Optional[str] = None
-    ) -> ACMEAccount:
+    async def register_account(self, email: str | None = None) -> ACMEAccount:
         """
         Register a new ACME account or retrieve existing one.
 
@@ -143,9 +137,7 @@ class ACMEService:
         email_to_use = email or settings.acme_account_email or None
 
         def do_registration():
-            regr = messages.NewRegistration.from_data(
-                terms_of_service_agreed=True
-            )
+            regr = messages.NewRegistration.from_data(terms_of_service_agreed=True)
             if email_to_use:
                 regr = regr.update(contact=(f"mailto:{email_to_use}",))
 
@@ -156,10 +148,7 @@ class ACMEService:
             except acme_errors.ConflictError as conflict:
                 # Account already exists — use the location URL to query it
                 logger.info(f"ACME account already exists at {conflict.location}, retrieving")
-                existing_regr = messages.RegistrationResource(
-                    uri=conflict.location,
-                    body=messages.Registration()
-                )
+                existing_regr = messages.RegistrationResource(uri=conflict.location, body=messages.Registration())
                 return acme_client.query_registration(existing_regr)
 
         account_resource = await asyncio.to_thread(do_registration)
@@ -168,14 +157,14 @@ class ACMEService:
         private_key_pem = account_key.key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        ).decode('utf-8')
+            encryption_algorithm=serialization.NoEncryption(),
+        ).decode("utf-8")
 
         return ACMEAccount(
             email=email_to_use,
             directory_url=self.directory_url,
-            account_url=account_resource.uri if hasattr(account_resource, 'uri') else None,
-            private_key_pem=private_key_pem
+            account_url=account_resource.uri if hasattr(account_resource, "uri") else None,
+            private_key_pem=private_key_pem,
         )
 
     async def load_account(self, account: ACMEAccount) -> None:
@@ -186,17 +175,14 @@ class ACMEService:
             account: ACMEAccount with private key
         """
         # Load private key from PEM
-        private_key = serialization.load_pem_private_key(
-            account.private_key_pem.encode('utf-8'),
-            password=None
-        )
+        private_key = serialization.load_pem_private_key(account.private_key_pem.encode("utf-8"), password=None)
         self._account_key = jose.JWKRSA(key=private_key)
 
         # Recreate client with loaded key
         self._client = None
         await self._get_client()
 
-    def _make_csr(self, domains: List[str]) -> bytes:
+    def _make_csr(self, domains: list[str]) -> bytes:
         """
         Create a CSR for the given domains.
 
@@ -207,23 +193,15 @@ class ACMEService:
             PEM-encoded CSR bytes
         """
         # Generate a temporary key for the CSR
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048
-        )
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
         # Build CSR with SAN extension
         builder = x509.CertificateSigningRequestBuilder()
-        builder = builder.subject_name(x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, domains[0])
-        ]))
+        builder = builder.subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, domains[0])]))
 
         # Add Subject Alternative Names
         san_list = [x509.DNSName(domain) for domain in domains]
-        builder = builder.add_extension(
-            x509.SubjectAlternativeName(san_list),
-            critical=False
-        )
+        builder = builder.add_extension(x509.SubjectAlternativeName(san_list), critical=False)
 
         # Sign the CSR
         csr = builder.sign(private_key, hashes.SHA256())
@@ -231,10 +209,7 @@ class ACMEService:
         # Return PEM-encoded CSR
         return csr.public_bytes(serialization.Encoding.PEM)
 
-    async def create_order(
-        self,
-        domains: List[str]
-    ) -> messages.OrderResource:
+    async def create_order(self, domains: list[str]) -> messages.OrderResource:
         """
         Create a new certificate order.
 
@@ -258,14 +233,10 @@ class ACMEService:
             return order
         except Exception as e:
             raise ACMEOrderError(
-                f"Failed to create order: {e}",
-                suggestion="Check that all domains are valid and resolvable"
+                f"Failed to create order: {e}", suggestion="Check that all domains are valid and resolvable"
             )
 
-    async def get_http_challenge(
-        self,
-        authorization: messages.AuthorizationResource
-    ) -> Tuple[challenges.HTTP01, str]:
+    async def get_http_challenge(self, authorization: messages.AuthorizationResource) -> tuple[challenges.HTTP01, str]:
         """
         Extract HTTP-01 challenge from authorization.
 
@@ -280,21 +251,12 @@ class ACMEService:
         for challenge in authorization.body.challenges:
             if isinstance(challenge.chall, challenges.HTTP01):
                 # Compute key authorization
-                key_authz = challenge.chall.key_authorization(
-                    acme_client.net.key
-                )
+                key_authz = challenge.chall.key_authorization(acme_client.net.key)
                 return challenge, key_authz
 
-        raise ACMEChallengeError(
-            "No HTTP-01 challenge found",
-            suggestion="Server may only support DNS-01 challenges"
-        )
+        raise ACMEChallengeError("No HTTP-01 challenge found", suggestion="Server may only support DNS-01 challenges")
 
-    async def setup_challenge_file(
-        self,
-        token,
-        key_authorization: str
-    ) -> Path:
+    async def setup_challenge_file(self, token, key_authorization: str) -> Path:
         """
         Create HTTP-01 challenge file.
 
@@ -310,7 +272,7 @@ class ACMEService:
 
         # Handle bytes token from ACME library
         if isinstance(token, bytes):
-            token = token.decode('utf-8')
+            token = token.decode("utf-8")
 
         challenge_path = self._challenge_dir / token
         challenge_path.write_text(key_authorization)
@@ -327,17 +289,14 @@ class ACMEService:
         """
         # Handle bytes token from ACME library
         if isinstance(token, bytes):
-            token = token.decode('utf-8')
+            token = token.decode("utf-8")
 
         challenge_path = self._challenge_dir / token
         if challenge_path.exists():
             challenge_path.unlink()
             logger.info(f"Removed challenge file {challenge_path}")
 
-    async def respond_to_challenge(
-        self,
-        challenge
-    ):
+    async def respond_to_challenge(self, challenge):
         """
         Notify ACME server that challenge is ready.
 
@@ -350,10 +309,7 @@ class ACMEService:
         acme_client = await self._get_client()
 
         def do_respond():
-            return acme_client.answer_challenge(
-                challenge,
-                challenge.chall.response(acme_client.net.key)
-            )
+            return acme_client.answer_challenge(challenge, challenge.chall.response(acme_client.net.key))
 
         try:
             response = await asyncio.to_thread(do_respond)
@@ -362,14 +318,11 @@ class ACMEService:
         except Exception as e:
             raise ACMEChallengeError(
                 f"Failed to respond to challenge: {e}",
-                suggestion="Ensure challenge file is accessible at http://domain/.well-known/acme-challenge/{token}"
+                suggestion="Ensure challenge file is accessible at http://domain/.well-known/acme-challenge/{token}",
             )
 
     async def poll_authorization(
-        self,
-        order: messages.OrderResource,
-        timeout: int = 300,
-        interval: float = 2.0
+        self, order: messages.OrderResource, timeout: int = 300, interval: float = 2.0
     ) -> messages.OrderResource:
         """
         Poll until order authorizations are valid.
@@ -384,6 +337,7 @@ class ACMEService:
         """
         acme_client = await self._get_client()
         from datetime import timedelta
+
         deadline_dt = datetime.utcnow() + timedelta(seconds=timeout)
         deadline_ts = deadline_dt.timestamp()
 
@@ -395,10 +349,7 @@ class ACMEService:
                 updated_order = await asyncio.to_thread(poll_order)
 
                 # Check if all authorizations are valid
-                all_valid = all(
-                    authz.body.status == messages.STATUS_VALID
-                    for authz in updated_order.authorizations
-                )
+                all_valid = all(authz.body.status == messages.STATUS_VALID for authz in updated_order.authorizations)
 
                 if all_valid:
                     logger.info("All authorizations validated")
@@ -409,7 +360,7 @@ class ACMEService:
                     if authz.body.status == messages.STATUS_INVALID:
                         raise ACMEAuthorizationError(
                             f"Authorization failed for {authz.body.identifier.value}",
-                            suggestion="Check that the domain points to this server and port 80 is accessible"
+                            suggestion="Check that the domain points to this server and port 80 is accessible",
                         )
 
             except ACMEAuthorizationError:
@@ -421,15 +372,12 @@ class ACMEService:
 
         raise ACMEAuthorizationError(
             f"Authorization timed out after {timeout} seconds",
-            suggestion="Increase timeout or check domain accessibility"
+            suggestion="Increase timeout or check domain accessibility",
         )
 
     async def finalize_order(
-        self,
-        order: messages.OrderResource,
-        domains: List[str],
-        timeout: int = 300
-    ) -> Tuple[bytes, bytes, bytes]:
+        self, order: messages.OrderResource, domains: list[str], timeout: int = 300
+    ) -> tuple[bytes, bytes, bytes]:
         """
         Finalize order and download certificate.
 
@@ -444,29 +392,22 @@ class ACMEService:
         acme_client = await self._get_client()
 
         # Generate private key for certificate
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048
-        )
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
         # Build CSR with SAN extension
         builder = x509.CertificateSigningRequestBuilder()
-        builder = builder.subject_name(x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, domains[0])
-        ]))
+        builder = builder.subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, domains[0])]))
 
         # Add Subject Alternative Names
         san_list = [x509.DNSName(domain) for domain in domains]
-        builder = builder.add_extension(
-            x509.SubjectAlternativeName(san_list),
-            critical=False
-        )
+        builder = builder.add_extension(x509.SubjectAlternativeName(san_list), critical=False)
 
         # Sign the CSR and get PEM bytes
         csr = builder.sign(private_key, hashes.SHA256())
         csr_pem = csr.public_bytes(serialization.Encoding.PEM)
 
         from datetime import timedelta
+
         deadline = datetime.utcnow() + timedelta(seconds=timeout)
 
         def do_finalize():
@@ -480,38 +421,33 @@ class ACMEService:
             finalized_order = await asyncio.to_thread(do_finalize)
         except Exception as e:
             raise ACMEOrderError(
-                f"Failed to finalize order: {e}",
-                suggestion="Check that all authorizations completed successfully"
+                f"Failed to finalize order: {e}", suggestion="Check that all authorizations completed successfully"
             )
 
         # Extract certificate chain
-        fullchain_pem = finalized_order.fullchain_pem.encode('utf-8')
+        fullchain_pem = finalized_order.fullchain_pem.encode("utf-8")
 
         # Serialize private key
         private_key_pem = private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
+            encryption_algorithm=serialization.NoEncryption(),
         )
 
         # Split fullchain into cert and chain
-        certs = fullchain_pem.split(b'-----END CERTIFICATE-----')
-        cert_pem = certs[0] + b'-----END CERTIFICATE-----\n'
-        chain_pem = b'-----END CERTIFICATE-----'.join(certs[1:])
+        certs = fullchain_pem.split(b"-----END CERTIFICATE-----")
+        cert_pem = certs[0] + b"-----END CERTIFICATE-----\n"
+        chain_pem = b"-----END CERTIFICATE-----".join(certs[1:])
         if chain_pem.strip():
-            chain_pem = chain_pem.strip() + b'\n'
+            chain_pem = chain_pem.strip() + b"\n"
         else:
-            chain_pem = b''
+            chain_pem = b""
 
         logger.info(f"Successfully obtained certificate for {domains}")
 
         return cert_pem, private_key_pem, chain_pem
 
-    async def revoke_certificate(
-        self,
-        cert_pem: bytes,
-        reason: int = 0
-    ) -> bool:
+    async def revoke_certificate(self, cert_pem: bytes, reason: int = 0) -> bool:
         """
         Revoke a certificate.
 
@@ -528,10 +464,7 @@ class ACMEService:
         cert = x509.load_pem_x509_certificate(cert_pem)
 
         def do_revoke():
-            acme_client.revoke(
-                jose.ComparableX509(cert),
-                reason
-            )
+            acme_client.revoke(jose.ComparableX509(cert), reason)
 
         try:
             await asyncio.to_thread(do_revoke)
@@ -540,8 +473,7 @@ class ACMEService:
         except Exception as e:
             logger.error(f"Failed to revoke certificate: {e}")
             raise ACMEError(
-                f"Failed to revoke certificate: {e}",
-                suggestion="Certificate may already be revoked or expired"
+                f"Failed to revoke certificate: {e}", suggestion="Certificate may already be revoked or expired"
             )
 
 
@@ -583,11 +515,11 @@ def parse_certificate(cert_pem: bytes) -> dict:
     return {
         "subject": subject,
         "issuer": issuer,
-        "serial_number": format(cert.serial_number, 'x'),
+        "serial_number": format(cert.serial_number, "x"),
         "not_before": cert.not_valid_before_utc,
         "not_after": cert.not_valid_after_utc,
         "alt_names": alt_names,
-        "fingerprint_sha256": fingerprint
+        "fingerprint_sha256": fingerprint,
     }
 
 
@@ -611,19 +543,17 @@ def validate_certificate_key_match(cert_pem: bytes, key_pem: bytes) -> bool:
 
     # Compare public key bytes
     cert_bytes = cert_public.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
+        encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
     key_bytes = key_public.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
+        encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
 
     return cert_bytes == key_bytes
 
 
 # Singleton instance
-_acme_service: Optional[ACMEService] = None
+_acme_service: ACMEService | None = None
 
 
 def get_acme_service() -> ACMEService:

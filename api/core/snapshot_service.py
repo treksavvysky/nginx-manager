@@ -5,12 +5,12 @@ Captures and restores NGINX configuration state,
 enabling rollback and diff generation.
 """
 
+import difflib
 import logging
 import shutil
-import difflib
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -21,37 +21,31 @@ logger = logging.getLogger(__name__)
 
 class SnapshotInfo(BaseModel):
     """Information about a snapshot."""
+
     transaction_id: str
     stage: str  # "before" or "after"
     path: str
-    files: List[str] = Field(default_factory=list)
+    files: list[str] = Field(default_factory=list)
     total_size: int = 0
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class RestoreResult(BaseModel):
     """Result of a snapshot restore operation."""
+
     success: bool
-    files_restored: List[str] = Field(default_factory=list)
-    errors: List[str] = Field(default_factory=list)
+    files_restored: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 class SnapshotService:
     """Manages configuration state snapshots for transactions."""
 
-    def __init__(
-        self,
-        snapshot_dir: Optional[str] = None,
-        nginx_conf_dir: Optional[str] = None
-    ):
+    def __init__(self, snapshot_dir: str | None = None, nginx_conf_dir: str | None = None):
         self.snapshot_dir = Path(snapshot_dir or settings.snapshot_dir)
         self.nginx_conf_dir = Path(nginx_conf_dir or settings.nginx_conf_dir)
 
-    async def create_snapshot(
-        self,
-        transaction_id: str,
-        stage: str = "before"
-    ) -> SnapshotInfo:
+    async def create_snapshot(self, transaction_id: str, stage: str = "before") -> SnapshotInfo:
         """
         Capture current configuration state to snapshot directory.
 
@@ -65,7 +59,7 @@ class SnapshotService:
         snapshot_path = self._get_snapshot_path(transaction_id, stage)
         snapshot_path.mkdir(parents=True, exist_ok=True)
 
-        files: List[str] = []
+        files: list[str] = []
         total_size = 0
 
         # Copy all .conf files from nginx conf directory
@@ -77,23 +71,14 @@ class SnapshotService:
                 total_size += conf_file.stat().st_size
 
         logger.info(
-            f"Created {stage} snapshot for transaction {transaction_id}: "
-            f"{len(files)} files, {total_size} bytes"
+            f"Created {stage} snapshot for transaction {transaction_id}: {len(files)} files, {total_size} bytes"
         )
 
         return SnapshotInfo(
-            transaction_id=transaction_id,
-            stage=stage,
-            path=str(snapshot_path),
-            files=files,
-            total_size=total_size
+            transaction_id=transaction_id, stage=stage, path=str(snapshot_path), files=files, total_size=total_size
         )
 
-    async def restore_snapshot(
-        self,
-        transaction_id: str,
-        stage: str = "before"
-    ) -> RestoreResult:
+    async def restore_snapshot(self, transaction_id: str, stage: str = "before") -> RestoreResult:
         """
         Restore configuration from a snapshot.
 
@@ -107,13 +92,10 @@ class SnapshotService:
         snapshot_path = self._get_snapshot_path(transaction_id, stage)
 
         if not snapshot_path.exists():
-            return RestoreResult(
-                success=False,
-                errors=[f"Snapshot not found: {snapshot_path}"]
-            )
+            return RestoreResult(success=False, errors=[f"Snapshot not found: {snapshot_path}"])
 
-        files_restored: List[str] = []
-        errors: List[str] = []
+        files_restored: list[str] = []
+        errors: list[str] = []
 
         # Clear current configs and restore from snapshot
         for conf_file in snapshot_path.glob("*.conf"):
@@ -135,21 +117,11 @@ class SnapshotService:
                     errors.append(f"Failed to remove {conf_file.name}: {e}")
 
         success = len(errors) == 0
-        logger.info(
-            f"Restored snapshot {transaction_id}/{stage}: "
-            f"{len(files_restored)} files, {len(errors)} errors"
-        )
+        logger.info(f"Restored snapshot {transaction_id}/{stage}: {len(files_restored)} files, {len(errors)} errors")
 
-        return RestoreResult(
-            success=success,
-            files_restored=files_restored,
-            errors=errors
-        )
+        return RestoreResult(success=success, files_restored=files_restored, errors=errors)
 
-    async def get_diff(
-        self,
-        transaction_id: str
-    ) -> Dict[str, Any]:
+    async def get_diff(self, transaction_id: str) -> dict[str, Any]:
         """
         Generate unified diff between before and after states.
 
@@ -162,12 +134,7 @@ class SnapshotService:
         before_path = self._get_snapshot_path(transaction_id, "before")
         after_path = self._get_snapshot_path(transaction_id, "after")
 
-        result = {
-            "files_changed": 0,
-            "total_additions": 0,
-            "total_deletions": 0,
-            "files": []
-        }
+        result = {"files_changed": 0, "total_additions": 0, "total_deletions": 0, "files": []}
 
         if not before_path.exists():
             return result
@@ -185,7 +152,7 @@ class SnapshotService:
             file_diff = await self._diff_file(
                 before_file if before_file.exists() else None,
                 after_file if after_file and after_file.exists() else None,
-                filename
+                filename,
             )
 
             if file_diff["change_type"] != "unchanged":
@@ -196,12 +163,7 @@ class SnapshotService:
 
         return result
 
-    async def _diff_file(
-        self,
-        before_file: Optional[Path],
-        after_file: Optional[Path],
-        filename: str
-    ) -> Dict[str, Any]:
+    async def _diff_file(self, before_file: Path | None, after_file: Path | None, filename: str) -> dict[str, Any]:
         """Generate diff for a single file."""
         before_lines = []
         after_lines = []
@@ -223,30 +185,23 @@ class SnapshotService:
             change_type = "modified"
 
         # Generate unified diff
-        diff_lines = list(difflib.unified_diff(
-            before_lines,
-            after_lines,
-            fromfile=f"a/{filename}",
-            tofile=f"b/{filename}"
-        ))
+        diff_lines = list(
+            difflib.unified_diff(before_lines, after_lines, fromfile=f"a/{filename}", tofile=f"b/{filename}")
+        )
 
         # Count additions and deletions
-        additions = sum(1 for line in diff_lines if line.startswith('+') and not line.startswith('+++'))
-        deletions = sum(1 for line in diff_lines if line.startswith('-') and not line.startswith('---'))
+        additions = sum(1 for line in diff_lines if line.startswith("+") and not line.startswith("+++"))
+        deletions = sum(1 for line in diff_lines if line.startswith("-") and not line.startswith("---"))
 
         return {
             "file_path": filename,
             "change_type": change_type,
             "additions": additions,
             "deletions": deletions,
-            "diff_content": "".join(diff_lines) if diff_lines else None
+            "diff_content": "".join(diff_lines) if diff_lines else None,
         }
 
-    async def get_snapshot_info(
-        self,
-        transaction_id: str,
-        stage: str
-    ) -> Optional[SnapshotInfo]:
+    async def get_snapshot_info(self, transaction_id: str, stage: str) -> SnapshotInfo | None:
         """Get metadata about a snapshot."""
         snapshot_path = self._get_snapshot_path(transaction_id, stage)
 
@@ -265,21 +220,14 @@ class SnapshotService:
             path=str(snapshot_path),
             files=files,
             total_size=total_size,
-            created_at=created_at
+            created_at=created_at,
         )
 
-    async def snapshot_exists(
-        self,
-        transaction_id: str,
-        stage: str = "before"
-    ) -> bool:
+    async def snapshot_exists(self, transaction_id: str, stage: str = "before") -> bool:
         """Check if a snapshot exists."""
         return self._get_snapshot_path(transaction_id, stage).exists()
 
-    async def cleanup_old_snapshots(
-        self,
-        retention_days: Optional[int] = None
-    ) -> int:
+    async def cleanup_old_snapshots(self, retention_days: int | None = None) -> int:
         """
         Remove snapshots older than retention period.
 
@@ -347,7 +295,7 @@ class SnapshotService:
 
 
 # Singleton instance
-_snapshot_service: Optional[SnapshotService] = None
+_snapshot_service: SnapshotService | None = None
 
 
 def get_snapshot_service() -> SnapshotService:

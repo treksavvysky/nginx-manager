@@ -5,16 +5,16 @@ Tests that security headers are added to responses
 and that CORS is configured correctly.
 """
 
+import os
+import sys
+
 import pytest
-from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 from starlette.responses import Response
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'api'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "api"))
 
 
 class TestSecurityHeaders:
@@ -101,7 +101,9 @@ class TestCORSConfiguration:
         cors_origins = (
             [o.strip() for o in cors_allowed_origins.split(",") if o.strip()]
             if cors_allowed_origins
-            else ["*"] if api_debug else []
+            else ["*"]
+            if api_debug
+            else []
         )
         assert cors_origins == ["*"]
 
@@ -112,7 +114,9 @@ class TestCORSConfiguration:
         cors_origins = (
             [o.strip() for o in cors_allowed_origins.split(",") if o.strip()]
             if cors_allowed_origins
-            else ["*"] if api_debug else []
+            else ["*"]
+            if api_debug
+            else []
         )
         assert cors_origins == []
 
@@ -123,7 +127,9 @@ class TestCORSConfiguration:
         cors_origins = (
             [o.strip() for o in cors_allowed_origins.split(",") if o.strip()]
             if cors_allowed_origins
-            else ["*"] if api_debug else []
+            else ["*"]
+            if api_debug
+            else []
         )
         assert cors_origins == ["https://app.example.com", "https://admin.example.com"]
 
@@ -134,6 +140,8 @@ class TestCORSConfiguration:
         cors_origins = (
             [o.strip() for o in cors_allowed_origins.split(",") if o.strip()]
             if cors_allowed_origins
-            else ["*"] if api_debug else []
+            else ["*"]
+            if api_debug
+            else []
         )
         assert cors_origins == ["https://only-this.example.com"]

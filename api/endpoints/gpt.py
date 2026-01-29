@@ -20,7 +20,7 @@ router = APIRouter(prefix="/gpt", tags=["GPT Integration"])
     summary="GPT-Compatible OpenAPI Schema",
     description="Returns an OpenAPI 3.1 schema optimized for OpenAI Custom GPT Actions.",
     response_class=JSONResponse,
-    include_in_schema=False
+    include_in_schema=False,
 )
 async def gpt_openapi_schema(
     request: Request,
@@ -30,7 +30,7 @@ async def gpt_openapi_schema(
             "The public HTTPS URL where GPT will reach this API. "
             "Must match the origin configured in your Custom GPT. "
             "Example: https://yourdomain.com:8000"
-        )
+        ),
     ),
 ):
     """Generate GPT-compatible OpenAPI schema."""
@@ -52,7 +52,7 @@ async def gpt_openapi_schema(
             "NGINX Control",
             "SSL Certificates",
             "Agent Workflows",
-        ]
+        ],
     )
 
     return JSONResponse(content=gpt_schema)
@@ -63,7 +63,7 @@ async def gpt_openapi_schema(
     summary="GPT System Instructions",
     description="Returns the system instruction template for configuring a Custom GPT.",
     response_class=PlainTextResponse,
-    include_in_schema=False
+    include_in_schema=False,
 )
 async def gpt_instructions():
     """Return GPT system instruction template."""
@@ -71,6 +71,5 @@ async def gpt_instructions():
     if instructions_path.exists():
         return PlainTextResponse(content=instructions_path.read_text())
     return PlainTextResponse(
-        content="# Instructions file not found\n\nPlease create api/gpt/instructions.md",
-        status_code=404
+        content="# Instructions file not found\n\nPlease create api/gpt/instructions.md", status_code=404
     )

@@ -4,14 +4,14 @@ Unit tests for JWT token authentication.
 Tests JWT creation, validation, expiration, and token refresh flow.
 """
 
-import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
 from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
+import pytest
 
 from core.auth_service import AuthService
-from models.auth import Role, AuthContext
+from models.auth import AuthContext, Role
 
 
 class TestJWTTokenCreation:
@@ -142,9 +142,12 @@ class TestJWTTokenValidation:
     def test_validate_expired_token(self):
         """Expired token returns None."""
         secret = "test-secret"
-        token = self._make_token(secret, {
-            "exp": datetime.utcnow() - timedelta(hours=1),
-        })
+        token = self._make_token(
+            secret,
+            {
+                "exp": datetime.utcnow() - timedelta(hours=1),
+            },
+        )
 
         with patch("core.auth_service.settings") as mock_settings:
             mock_settings.jwt_secret_key = secret
@@ -204,12 +207,15 @@ class TestJWTTokenValidation:
     def test_validate_token_with_user_id(self):
         """Token with user_id returns correct context."""
         secret = "test-secret"
-        token = self._make_token(secret, {
-            "sub": "user-789",
-            "user_id": "user-789",
-            "role": "admin",
-            "auth_method": "user",
-        })
+        token = self._make_token(
+            secret,
+            {
+                "sub": "user-789",
+                "user_id": "user-789",
+                "role": "admin",
+                "auth_method": "user",
+            },
+        )
 
         with patch("core.auth_service.settings") as mock_settings:
             mock_settings.jwt_secret_key = secret
@@ -304,6 +310,7 @@ class TestAuthDependencyJWT:
     async def test_invalid_jwt_raises_401(self):
         """Invalid JWT token raises 401."""
         from fastapi import HTTPException
+
         from core.auth_dependency import get_current_auth
 
         mock_request = MagicMock()
@@ -324,6 +331,7 @@ class TestAuthDependencyJWT:
     async def test_no_credentials_raises_401(self):
         """No Bearer token and no API key raises 401."""
         from fastapi import HTTPException
+
         from core.auth_dependency import get_current_auth
 
         mock_request = MagicMock()

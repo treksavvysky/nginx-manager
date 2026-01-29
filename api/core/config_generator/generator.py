@@ -8,7 +8,6 @@ NGINX configuration file content.
 import logging
 import re
 from pathlib import Path
-from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
@@ -17,7 +16,7 @@ from models.site_requests import SiteCreateRequest, SiteType
 logger = logging.getLogger(__name__)
 
 # Characters that could allow NGINX directive injection
-_NGINX_DANGEROUS_PATTERN = re.compile(r'[{};\\`$\n\r\x00]')
+_NGINX_DANGEROUS_PATTERN = re.compile(r"[{};\\`$\n\r\x00]")
 
 
 def sanitize_nginx_value(value: str, field_name: str = "value") -> str:
@@ -43,11 +42,11 @@ def sanitize_nginx_value(value: str, field_name: str = "value") -> str:
         char = match.group()
         readable = repr(char)
         raise ConfigGeneratorError(
-            f"Invalid character {readable} in {field_name}. "
-            f"Characters {{ }} ; \\ ` $ and newlines are not allowed.",
+            f"Invalid character {readable} in {field_name}. Characters {{ }} ; \\ ` $ and newlines are not allowed.",
             site_name=None,
         )
     return value
+
 
 # Default template directory
 DEFAULT_TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -56,7 +55,7 @@ DEFAULT_TEMPLATE_DIR = Path(__file__).parent / "templates"
 class ConfigGeneratorError(Exception):
     """Base exception for config generator errors."""
 
-    def __init__(self, message: str, site_name: Optional[str] = None):
+    def __init__(self, message: str, site_name: str | None = None):
         self.message = message
         self.site_name = site_name
         super().__init__(message)
@@ -64,6 +63,7 @@ class ConfigGeneratorError(Exception):
 
 class TemplateNotFoundError(ConfigGeneratorError):
     """Template file not found."""
+
     pass
 
 
@@ -75,7 +75,7 @@ class ConfigGenerator:
     for different site types (static, reverse proxy).
     """
 
-    def __init__(self, template_dir: Optional[Path] = None):
+    def __init__(self, template_dir: Path | None = None):
         """
         Initialize the config generator.
 
@@ -85,16 +85,14 @@ class ConfigGenerator:
         self.template_dir = template_dir or DEFAULT_TEMPLATE_DIR
 
         if not self.template_dir.exists():
-            raise ConfigGeneratorError(
-                f"Template directory not found: {self.template_dir}"
-            )
+            raise ConfigGeneratorError(f"Template directory not found: {self.template_dir}")
 
         self.env = Environment(
             loader=FileSystemLoader(str(self.template_dir)),
             autoescape=False,  # NGINX configs don't need HTML escaping
             trim_blocks=True,
             lstrip_blocks=True,
-            keep_trailing_newline=True
+            keep_trailing_newline=True,
         )
 
         logger.info(f"ConfigGenerator initialized with templates from {self.template_dir}")
@@ -117,10 +115,7 @@ class ConfigGenerator:
         elif request.site_type == SiteType.REVERSE_PROXY:
             return self.generate_reverse_proxy(request)
         else:
-            raise ConfigGeneratorError(
-                f"Unknown site type: {request.site_type}",
-                site_name=request.name
-            )
+            raise ConfigGeneratorError(f"Unknown site type: {request.site_type}", site_name=request.name)
 
     def generate_static_site(self, request: SiteCreateRequest) -> str:
         """
@@ -135,10 +130,7 @@ class ConfigGenerator:
         try:
             template = self.env.get_template("static_site.conf.j2")
         except TemplateNotFound:
-            raise TemplateNotFoundError(
-                "Static site template not found",
-                site_name=request.name
-            )
+            raise TemplateNotFoundError("Static site template not found", site_name=request.name)
 
         # Sanitize user-supplied values before template rendering
         server_names_str = " ".join(request.server_names)
@@ -151,7 +143,7 @@ class ConfigGenerator:
             listen_port=request.listen_port,
             server_names=server_names_str,
             root_path=request.root_path,
-            index_files=index_files_str
+            index_files=index_files_str,
         )
 
         logger.debug(f"Generated static site config for {request.name}")
@@ -170,10 +162,7 @@ class ConfigGenerator:
         try:
             template = self.env.get_template("reverse_proxy.conf.j2")
         except TemplateNotFound:
-            raise TemplateNotFoundError(
-                "Reverse proxy template not found",
-                site_name=request.name
-            )
+            raise TemplateNotFoundError("Reverse proxy template not found", site_name=request.name)
 
         # Sanitize user-supplied values before template rendering
         server_names_str = " ".join(request.server_names)
@@ -181,9 +170,7 @@ class ConfigGenerator:
         sanitize_nginx_value(request.proxy_pass, "proxy_pass")
 
         config = template.render(
-            listen_port=request.listen_port,
-            server_names=server_names_str,
-            proxy_pass=request.proxy_pass
+            listen_port=request.listen_port, server_names=server_names_str, proxy_pass=request.proxy_pass
         )
 
         logger.debug(f"Generated reverse proxy config for {request.name}")
@@ -196,7 +183,7 @@ class ConfigGenerator:
         ssl_cert_path: str,
         ssl_key_path: str,
         acme_challenge_dir: str,
-        index_files: str = "index.html index.htm"
+        index_files: str = "index.html index.htm",
     ) -> str:
         """Generate SSL-enabled static site configuration."""
         try:
@@ -215,18 +202,13 @@ class ConfigGenerator:
             index_files=index_files,
             ssl_cert_path=ssl_cert_path,
             ssl_key_path=ssl_key_path,
-            acme_challenge_dir=acme_challenge_dir
+            acme_challenge_dir=acme_challenge_dir,
         )
         logger.debug(f"Generated SSL static site config for {server_names}")
         return config
 
     def generate_ssl_reverse_proxy(
-        self,
-        server_names: str,
-        proxy_pass: str,
-        ssl_cert_path: str,
-        ssl_key_path: str,
-        acme_challenge_dir: str
+        self, server_names: str, proxy_pass: str, ssl_cert_path: str, ssl_key_path: str, acme_challenge_dir: str
     ) -> str:
         """Generate SSL-enabled reverse proxy configuration."""
         try:
@@ -243,7 +225,7 @@ class ConfigGenerator:
             proxy_pass=proxy_pass,
             ssl_cert_path=ssl_cert_path,
             ssl_key_path=ssl_key_path,
-            acme_challenge_dir=acme_challenge_dir
+            acme_challenge_dir=acme_challenge_dir,
         )
         logger.debug(f"Generated SSL reverse proxy config for {server_names}")
         return config
@@ -266,7 +248,7 @@ class ConfigGenerator:
 
 
 # Singleton instance
-_config_generator: Optional[ConfigGenerator] = None
+_config_generator: ConfigGenerator | None = None
 
 
 def get_config_generator() -> ConfigGenerator:

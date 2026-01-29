@@ -8,10 +8,10 @@ including reload, restart, status checks, and config testing.
 import asyncio
 import logging
 from datetime import datetime
-from typing import Optional, Tuple, Dict, Any, List
+from typing import Any
 
 import docker
-from docker.errors import NotFound, APIError
+from docker.errors import APIError, NotFound
 
 from config import settings
 
@@ -21,12 +21,7 @@ logger = logging.getLogger(__name__)
 class DockerServiceError(Exception):
     """Base exception for Docker service errors."""
 
-    def __init__(
-        self,
-        message: str,
-        error_type: str,
-        suggestion: Optional[str] = None
-    ):
+    def __init__(self, message: str, error_type: str, suggestion: str | None = None):
         self.message = message
         self.error_type = error_type
         self.suggestion = suggestion
@@ -35,16 +30,19 @@ class DockerServiceError(Exception):
 
 class ContainerNotFoundError(DockerServiceError):
     """Container not found."""
+
     pass
 
 
 class ContainerOperationError(DockerServiceError):
     """Error during container operation."""
+
     pass
 
 
 class DockerUnavailableError(DockerServiceError):
     """Docker daemon not available."""
+
     pass
 
 
@@ -52,7 +50,7 @@ class DockerService:
     """Service for managing Docker containers."""
 
     def __init__(self):
-        self._client: Optional[docker.DockerClient] = None
+        self._client: docker.DockerClient | None = None
 
     @property
     def client(self) -> docker.DockerClient:
@@ -64,7 +62,7 @@ class DockerService:
                 raise DockerUnavailableError(
                     f"Cannot connect to Docker daemon: {e}",
                     error_type="docker_unavailable",
-                    suggestion="Ensure Docker daemon is running and socket is accessible"
+                    suggestion="Ensure Docker daemon is running and socket is accessible",
                 )
         return self._client
 
@@ -76,20 +74,20 @@ class DockerService:
             raise ContainerNotFoundError(
                 f"Container '{settings.nginx_container_name}' not found",
                 error_type="container_not_found",
-                suggestion="Ensure NGINX container is running with 'docker compose up -d'"
+                suggestion="Ensure NGINX container is running with 'docker compose up -d'",
             )
         except APIError as e:
             raise ContainerOperationError(
                 f"Docker API error: {e}",
                 error_type="docker_api_error",
-                suggestion="Check Docker daemon status and permissions"
+                suggestion="Check Docker daemon status and permissions",
             )
 
-    async def get_container_status(self) -> Dict[str, Any]:
+    async def get_container_status(self) -> dict[str, Any]:
         """Get detailed container status."""
         return await asyncio.to_thread(self._get_container_status_sync)
 
-    def _get_container_status_sync(self) -> Dict[str, Any]:
+    def _get_container_status_sync(self) -> dict[str, Any]:
         """Synchronous container status retrieval."""
         container = self._get_container()
         container.reload()  # Refresh container data
@@ -124,11 +122,7 @@ class DockerService:
             "pid": state.get("Pid"),
         }
 
-    async def exec_in_container(
-        self,
-        command: List[str],
-        timeout: int = None
-    ) -> Tuple[int, str, str]:
+    async def exec_in_container(self, command: list[str], timeout: int = None) -> tuple[int, str, str]:
         """
         Execute command in NGINX container.
 
@@ -140,15 +134,9 @@ class DockerService:
             Tuple of (exit_code, stdout, stderr)
         """
         timeout = timeout or settings.nginx_operation_timeout
-        return await asyncio.to_thread(
-            self._exec_in_container_sync, command, timeout
-        )
+        return await asyncio.to_thread(self._exec_in_container_sync, command, timeout)
 
-    def _exec_in_container_sync(
-        self,
-        command: List[str],
-        timeout: int
-    ) -> Tuple[int, str, str]:
+    def _exec_in_container_sync(self, command: list[str], timeout: int) -> tuple[int, str, str]:
         """Synchronous command execution."""
         container = self._get_container()
 
@@ -164,7 +152,7 @@ class DockerService:
 
         return exit_code, stdout, stderr
 
-    async def reload_nginx(self) -> Tuple[bool, str, str]:
+    async def reload_nginx(self) -> tuple[bool, str, str]:
         """
         Send reload signal to NGINX (graceful reload).
 
@@ -172,9 +160,7 @@ class DockerService:
             Tuple of (success, stdout, stderr)
         """
         logger.info("Sending reload signal to NGINX")
-        exit_code, stdout, stderr = await self.exec_in_container(
-            ["nginx", "-s", "reload"]
-        )
+        exit_code, stdout, stderr = await self.exec_in_container(["nginx", "-s", "reload"])
         success = exit_code == 0
 
         if success:
@@ -204,7 +190,7 @@ class DockerService:
         logger.info("NGINX container restart completed")
         return True
 
-    async def test_config(self) -> Tuple[bool, str, str]:
+    async def test_config(self) -> tuple[bool, str, str]:
         """
         Test NGINX configuration (nginx -t).
 
@@ -212,9 +198,7 @@ class DockerService:
             Tuple of (success, stdout, stderr)
         """
         logger.info("Testing NGINX configuration")
-        exit_code, stdout, stderr = await self.exec_in_container(
-            ["nginx", "-t"]
-        )
+        exit_code, stdout, stderr = await self.exec_in_container(["nginx", "-t"])
         success = exit_code == 0
 
         if success:
@@ -224,16 +208,14 @@ class DockerService:
 
         return success, stdout, stderr
 
-    async def get_nginx_version(self) -> Dict[str, Any]:
+    async def get_nginx_version(self) -> dict[str, Any]:
         """
         Get NGINX version information.
 
         Returns:
             Dict with version info
         """
-        exit_code, stdout, stderr = await self.exec_in_container(
-            ["nginx", "-v"]
-        )
+        exit_code, stdout, stderr = await self.exec_in_container(["nginx", "-v"])
         # nginx -v outputs to stderr
         return {
             "exit_code": exit_code,

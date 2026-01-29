@@ -4,8 +4,7 @@ Unit tests for security suggestions and warnings.
 Tests that security misconfigurations generate appropriate warnings.
 """
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def _make_mock_settings(**overrides):
@@ -32,6 +31,7 @@ class TestSecurityWarnings:
         mock_settings = _make_mock_settings(auth_enabled=False)
         with patch("config.settings", mock_settings):
             from core.context_helpers import get_security_warnings
+
             warnings = get_security_warnings()
 
         codes = [w["code"] for w in warnings]
@@ -42,6 +42,7 @@ class TestSecurityWarnings:
         mock_settings = _make_mock_settings(api_debug=True, cors_allowed_origins="")
         with patch("config.settings", mock_settings):
             from core.context_helpers import get_security_warnings
+
             warnings = get_security_warnings()
 
         codes = [w["code"] for w in warnings]
@@ -52,6 +53,7 @@ class TestSecurityWarnings:
         mock_settings = _make_mock_settings(jwt_secret_key=None)
         with patch("config.settings", mock_settings):
             from core.context_helpers import get_security_warnings
+
             warnings = get_security_warnings()
 
         codes = [w["code"] for w in warnings]
@@ -62,6 +64,7 @@ class TestSecurityWarnings:
         mock_settings = _make_mock_settings(jwt_secret_key="short")
         with patch("config.settings", mock_settings):
             from core.context_helpers import get_security_warnings
+
             warnings = get_security_warnings()
 
         codes = [w["code"] for w in warnings]
@@ -72,6 +75,7 @@ class TestSecurityWarnings:
         mock_settings = _make_mock_settings(api_debug=True, cors_allowed_origins="")
         with patch("config.settings", mock_settings):
             from core.context_helpers import get_security_warnings
+
             warnings = get_security_warnings()
 
         codes = [w["code"] for w in warnings]
@@ -82,6 +86,7 @@ class TestSecurityWarnings:
         mock_settings = _make_mock_settings(encrypt_private_keys=False)
         with patch("config.settings", mock_settings):
             from core.context_helpers import get_security_warnings
+
             warnings = get_security_warnings()
 
         codes = [w["code"] for w in warnings]
@@ -92,6 +97,7 @@ class TestSecurityWarnings:
         mock_settings = _make_mock_settings()
         with patch("config.settings", mock_settings):
             from core.context_helpers import get_security_warnings
+
             warnings = get_security_warnings()
 
         assert len(warnings) == 0
@@ -99,12 +105,15 @@ class TestSecurityWarnings:
     def test_each_warning_has_required_fields(self):
         """Each warning has code, message, and suggestion fields."""
         mock_settings = _make_mock_settings(
-            auth_enabled=False, api_debug=True,
-            jwt_secret_key=None, cors_allowed_origins="",
+            auth_enabled=False,
+            api_debug=True,
+            jwt_secret_key=None,
+            cors_allowed_origins="",
             encrypt_private_keys=False,
         )
         with patch("config.settings", mock_settings):
             from core.context_helpers import get_security_warnings
+
             warnings = get_security_warnings()
 
         assert len(warnings) > 0
@@ -123,6 +132,7 @@ class TestMCPAuth:
         mock_settings.mcp_require_auth = False
         with patch("config.settings", mock_settings):
             from mcp_server.server import _validate_mcp_auth
+
             assert _validate_mcp_auth("stdio") is True
 
     def test_no_key_configured_allows_startup(self):
@@ -132,11 +142,11 @@ class TestMCPAuth:
         mock_settings = MagicMock()
         mock_settings.mcp_require_auth = True
         mock_settings.mcp_api_key = None
-        with patch("config.settings", mock_settings):
-            with patch.dict(os.environ, {}, clear=False):
-                os.environ.pop("MCP_API_KEY", None)
-                from mcp_server.server import _validate_mcp_auth
-                assert _validate_mcp_auth("stdio") is True
+        with patch("config.settings", mock_settings), patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MCP_API_KEY", None)
+            from mcp_server.server import _validate_mcp_auth
+
+            assert _validate_mcp_auth("stdio") is True
 
     def test_matching_key_allows_startup(self):
         """MCP starts when env MCP_API_KEY matches configured key."""
@@ -148,6 +158,7 @@ class TestMCPAuth:
         with patch("config.settings", mock_settings):
             with patch.dict(os.environ, {"MCP_API_KEY": "ngx_test_mcp_key"}):
                 from mcp_server.server import _validate_mcp_auth
+
                 assert _validate_mcp_auth("stdio") is True
 
     def test_mismatched_key_blocks_startup(self):
@@ -157,10 +168,10 @@ class TestMCPAuth:
         mock_settings = MagicMock()
         mock_settings.mcp_require_auth = True
         mock_settings.mcp_api_key = "ngx_correct_key"
-        with patch("config.settings", mock_settings):
-            with patch.dict(os.environ, {"MCP_API_KEY": "ngx_wrong_key"}):
-                from mcp_server.server import _validate_mcp_auth
-                assert _validate_mcp_auth("stdio") is False
+        with patch("config.settings", mock_settings), patch.dict(os.environ, {"MCP_API_KEY": "ngx_wrong_key"}):
+            from mcp_server.server import _validate_mcp_auth
+
+            assert _validate_mcp_auth("stdio") is False
 
     def test_missing_env_key_blocks_startup(self):
         """MCP refuses to start when key configured but env var missing."""
@@ -169,11 +180,11 @@ class TestMCPAuth:
         mock_settings = MagicMock()
         mock_settings.mcp_require_auth = True
         mock_settings.mcp_api_key = "ngx_configured_key"
-        with patch("config.settings", mock_settings):
-            with patch.dict(os.environ, {}, clear=False):
-                os.environ.pop("MCP_API_KEY", None)
-                from mcp_server.server import _validate_mcp_auth
-                assert _validate_mcp_auth("stdio") is False
+        with patch("config.settings", mock_settings), patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MCP_API_KEY", None)
+            from mcp_server.server import _validate_mcp_auth
+
+            assert _validate_mcp_auth("stdio") is False
 
     def test_http_transport_always_passes(self):
         """HTTP transport delegates auth to per-request middleware."""
@@ -181,4 +192,5 @@ class TestMCPAuth:
         mock_settings.mcp_require_auth = True
         with patch("config.settings", mock_settings):
             from mcp_server.server import _validate_mcp_auth
+
             assert _validate_mcp_auth("streamable-http") is True

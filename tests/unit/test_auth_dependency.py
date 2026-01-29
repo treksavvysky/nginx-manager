@@ -4,8 +4,9 @@ Unit tests for auth dependency.
 Tests authentication bypass, API key validation, and role enforcement.
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
 
 from models.auth import AuthContext, Role
 
@@ -67,7 +68,7 @@ class TestGetCurrentAuth:
         mock_request = MagicMock()
         mock_request.client.host = "127.0.0.1"
 
-        with patch('core.auth_dependency.settings') as mock_settings:
+        with patch("core.auth_dependency.settings") as mock_settings:
             mock_settings.auth_enabled = False
             ctx = await get_current_auth(mock_request, api_key=None)
 
@@ -78,12 +79,13 @@ class TestGetCurrentAuth:
     async def test_requires_key_when_auth_enabled(self):
         """Raises 401 when auth enabled and no key provided."""
         from fastapi import HTTPException
+
         from core.auth_dependency import get_current_auth
 
         mock_request = MagicMock()
         mock_request.client.host = "127.0.0.1"
 
-        with patch('core.auth_dependency.settings') as mock_settings:
+        with patch("core.auth_dependency.settings") as mock_settings:
             mock_settings.auth_enabled = True
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_auth(mock_request, api_key=None)
@@ -93,6 +95,7 @@ class TestGetCurrentAuth:
     async def test_invalid_key_returns_401(self):
         """Raises 401 for invalid API key."""
         from fastapi import HTTPException
+
         from core.auth_dependency import get_current_auth
 
         mock_request = MagicMock()
@@ -101,9 +104,9 @@ class TestGetCurrentAuth:
         mock_auth_service = MagicMock()
         mock_auth_service.validate_api_key = AsyncMock(return_value=None)
 
-        with patch('core.auth_dependency.settings') as mock_settings:
+        with patch("core.auth_dependency.settings") as mock_settings:
             mock_settings.auth_enabled = True
-            with patch('core.auth_service.get_auth_service', return_value=mock_auth_service):
+            with patch("core.auth_service.get_auth_service", return_value=mock_auth_service):
                 with pytest.raises(HTTPException) as exc_info:
                     await get_current_auth(mock_request, api_key="ngx_invalid")
                 assert exc_info.value.status_code == 401
@@ -125,9 +128,9 @@ class TestGetCurrentAuth:
         mock_auth_service = MagicMock()
         mock_auth_service.validate_api_key = AsyncMock(return_value=expected_ctx)
 
-        with patch('core.auth_dependency.settings') as mock_settings:
+        with patch("core.auth_dependency.settings") as mock_settings:
             mock_settings.auth_enabled = True
-            with patch('core.auth_service.get_auth_service', return_value=mock_auth_service):
+            with patch("core.auth_service.get_auth_service", return_value=mock_auth_service):
                 ctx = await get_current_auth(mock_request, api_key="ngx_validkey")
 
         assert ctx.api_key_id == "key-123"
@@ -152,6 +155,7 @@ class TestRequireRole:
     async def test_insufficient_role_raises_403(self):
         """Raises 403 when user lacks required role."""
         from fastapi import HTTPException
+
         from core.auth_dependency import require_role
 
         checker = require_role(Role.ADMIN)
