@@ -24,6 +24,8 @@ services:
       - ../../tests:/app/tests
       # Docker socket for container management
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    env_file:
+      - ../../.env
     environment:
       - API_DEBUG=true
       - API_RELOAD=true

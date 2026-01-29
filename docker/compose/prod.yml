@@ -20,6 +20,8 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       # Docker socket for NGINX container management (requires docker group)
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    env_file:
+      - ../../.env
     environment:
       - API_DEBUG=false
       - API_RELOAD=false
