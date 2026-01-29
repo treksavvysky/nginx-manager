@@ -236,58 +236,169 @@ Full authentication, authorization, and security hardening. Backward-compatible:
 
 ---
 
-## Phase 6: Web Dashboard
+## Phase 6: Engineering Foundation
 
 **Status: Planned**
 
-Dashboard is lowest priority for an AI-first tool—but valuable for monitoring and manual intervention.
+Before building a dashboard, the project needs CI/CD, expanded test coverage, and the deferred security work. These investments compound — every subsequent phase ships faster and more reliably with this foundation in place.
 
-### 6.1 Core UI
-- [ ] Site list view with status indicators
-- [ ] Site detail/edit forms
-- [ ] Configuration syntax highlighting
-- [ ] Real-time validation feedback
+**Rationale**: 420 unit tests with no CI pipeline means they only run when someone remembers to. MCP compliance tests and agent conversation tests are high-value for an AI-first tool — they validate the primary interface. 2FA must land before the web dashboard exposes authentication to browsers.
 
-### 6.2 Dashboard Features
-- [ ] System health overview
-- [ ] Certificate expiry calendar
-- [ ] Event/transaction log viewer
-- [ ] Quick actions (reload, backup, etc.)
+### 6.1 CI/CD Pipeline
+- [ ] GitHub Actions workflow for unit tests on push/PR
+- [ ] Automated linting and type checking (ruff, mypy)
+- [ ] Docker image builds on tagged releases
+- [ ] Staging deployment pipeline
+- [ ] Test coverage reporting and minimum threshold enforcement
+- [ ] Dependency vulnerability scanning (dependabot or equivalent)
 
-### 6.3 Technology Choice
-- **Option A**: HTMX + Alpine.js (lightweight, server-rendered)
-- **Option B**: React/Vue SPA (richer interactivity)
-- **Recommendation**: Start with HTMX for simplicity, migrate if needed
+### 6.2 Test Coverage Expansion
+- [ ] MCP protocol compliance tests (validate resource/tool schemas against MCP spec)
+- [ ] MCP end-to-end tests (stdio transport with real server)
+- [ ] Simulated agent conversation flows (multi-turn scenarios)
+- [ ] Error recovery test scenarios (partial failures, rollback verification)
+- [ ] Multi-step workflow integration tests
+- [ ] API contract tests (ensure backward compatibility on schema changes)
+
+### 6.3 Deferred Security
+- [ ] Optional TOTP-based 2FA for user accounts (deferred from Phase 5.2b)
+- [ ] 2FA enrollment flow (QR code generation, backup codes)
+- [ ] 2FA enforcement per role (optional for operators, required for admins)
+- [ ] Session management improvements (token revocation, active session listing)
+
+### 6.4 Deferred AI-Native Items
+- [ ] Confidence indicators for complex operations (deferred from Phase 2.4)
+- [ ] Suggested actions in every mutation response (deferred from Phase 2.5)
+- [ ] Response consistency audit (verify all endpoints follow rich context patterns)
 
 ---
 
-## Phase 7: Advanced Features
+## Phase 7: Web Dashboard
+
+**Status: Planned**
+
+The dashboard serves three purposes that AI interfaces handle poorly: **observability** (glancing at system state without asking a question), **manual intervention** (a button is faster than a prompt when something is wrong), and **trust calibration** (new users need to see what the system is doing before trusting an AI agent).
+
+### Architecture Decision: Hybrid Server-Rendered
+
+**HTMX + Alpine.js** for page structure and navigation, with targeted JavaScript widgets where interactivity adds real value. No SPA framework, no separate build pipeline, no node_modules.
+
+- **HTMX** handles page loads, form submissions, and live updates (polling/SSE)
+- **Alpine.js** handles local UI state (dropdowns, modals, filters, toggles)
+- **CodeMirror 6** for NGINX config viewing/editing with syntax highlighting
+- **Chart.js or uPlot** for metrics visualizations (Phase 8 readiness)
+- **Jinja2 templates** served directly by FastAPI — no separate frontend build
+
+This keeps the dashboard as a thin view layer over API calls, which is critical for Phase 9 multi-server support. Every dashboard page should work by calling the same REST API that agents use.
+
+### 7.1 Core Pages
+- [ ] FastAPI Jinja2 template infrastructure and static file serving
+- [ ] Base layout with navigation, auth state, and system status indicator
+- [ ] Site list page with status badges (enabled/disabled, SSL status, health)
+- [ ] Site detail page with parsed config display and quick actions
+- [ ] Site create/edit forms with real-time `?dry_run=true` validation
+- [ ] NGINX config viewer with CodeMirror 6 syntax highlighting
+
+### 7.2 Monitoring Pages
+- [ ] System health dashboard (NGINX status, container health, disk usage)
+- [ ] Certificate overview with expiry timeline and renewal status
+- [ ] Event log viewer with filtering (by type, date range, site, user)
+- [ ] Transaction history with diff viewer and one-click rollback
+
+### 7.3 Operations
+- [ ] Quick action buttons (reload, restart, test config) with confirmation
+- [ ] Workflow trigger UI (setup-site, migrate-site) with SSE progress display
+- [ ] User and API key management pages (admin only)
+- [ ] Login page with 2FA support (if Phase 6.3 complete)
+
+### 7.4 Dashboard Design Principles
+- Read-heavy, action-light — complex operations belong in the AI interfaces
+- Every page calls the public REST API, no dashboard-specific backend routes
+- Responsive layout but desktop-first (this is a server management tool)
+- No client-side routing — HTMX handles navigation, browser back/forward works natively
+
+---
+
+## Phase 8: Observability & Metrics
 
 **Status: Future**
 
-### 7.1 Templates & Presets
-- [ ] Built-in templates (static site, reverse proxy, load balancer)
-- [ ] Custom template creation
-- [ ] Variable substitution in templates
-- [ ] Template marketplace/sharing
+This phase gives the dashboard (and AI agents) rich operational data to work with. Without observability, the dashboard is just a CRUD interface — with it, it becomes a genuine monitoring tool.
 
-### 7.2 Monitoring & Metrics
-- [ ] NGINX access log parsing
-- [ ] Request rate and error tracking
-- [ ] Upstream health monitoring
-- [ ] Prometheus metrics endpoint
+### 8.1 NGINX Log Analysis
+- [ ] Access log parsing (structured extraction of status codes, response times, client IPs)
+- [ ] Error log parsing with categorization (upstream failures, config errors, client errors)
+- [ ] Per-site traffic summaries (requests/min, error rates, bandwidth)
+- [ ] Log retention and rotation policy
 
-### 7.3 Multi-Server Support
-- [ ] Remote NGINX server management
-- [ ] SSH-based configuration deployment
-- [ ] Centralized dashboard for multiple servers
-- [ ] Configuration sync across servers
+### 8.2 Metrics & Alerting
+- [ ] Prometheus metrics endpoint (`/metrics`) for NGINX and API health
+- [ ] Request rate and error rate tracking per site
+- [ ] Upstream health monitoring (response time, failure rate)
+- [ ] Certificate expiry alerting (webhook, email, or event-based)
+- [ ] Configurable alert thresholds
 
-### 7.4 Database Backend
-- [ ] SQLite for metadata storage
-- [ ] Configuration version history
-- [ ] Search and filtering capabilities
-- [ ] Migration from file-based storage
+### 8.3 Dashboard Integration
+- [ ] Traffic charts on site detail pages (Chart.js/uPlot)
+- [ ] System-wide metrics overview on health dashboard
+- [ ] Error log viewer with site-level filtering
+- [ ] Historical trend views (24h, 7d, 30d)
+
+### 8.4 AI Agent Observability
+- [ ] Metrics context in API responses (e.g., "this site is receiving 500 errors")
+- [ ] Anomaly detection suggestions for AI agents
+- [ ] Observability data in MCP resources (`nginx://metrics/{site}`)
+
+---
+
+## Phase 9: Multi-Server Management
+
+**Status: Future**
+
+This is the architectural inflection point. Moving from one NGINX container to multiple remote servers changes the data model, auth model, and deployment story. The API abstraction must be redesigned — the dashboard and AI interfaces follow from that.
+
+### 9.1 Backend Abstraction
+- [ ] Server registry (add/remove/list managed NGINX instances)
+- [ ] Connection adapters: local Docker (current) vs. remote SSH
+- [ ] Per-server health tracking and status aggregation
+- [ ] Server-scoped transactions and rollback
+- [ ] Configuration version history per server
+
+### 9.2 Remote Server Operations
+- [ ] SSH-based NGINX config deployment (key-based auth)
+- [ ] Remote `nginx -t` validation and reload
+- [ ] Certificate distribution to remote servers
+- [ ] Secure credential storage for SSH keys
+
+### 9.3 Centralized Management
+- [ ] Cross-server site listing and search
+- [ ] Configuration sync and drift detection between servers
+- [ ] Bulk operations (reload all, deploy config to multiple servers)
+- [ ] Server groups and tagging
+
+### 9.4 Dashboard & AI Updates
+- [ ] Server selector in dashboard navigation
+- [ ] Aggregated health view across all servers
+- [ ] MCP resources scoped by server (`nginx://servers/{id}/sites`)
+- [ ] Agent workflows extended for multi-server operations
+
+---
+
+## Phase 10: Ecosystem & Templates
+
+**Status: Future**
+
+### 10.1 Template Library
+- [ ] Built-in templates (load balancer, WebSocket proxy, SPA with API backend, WordPress, Node.js)
+- [ ] Custom template creation and management via API
+- [ ] Variable substitution and conditional blocks in templates
+- [ ] Template validation and testing
+
+### 10.2 Community & Integration
+- [ ] Template sharing/import (URL or file-based)
+- [ ] Webhook integrations for events (Slack, Discord, generic HTTP)
+- [ ] Terraform provider for NGINX Manager
+- [ ] Ansible module for bulk operations
 
 ---
 
@@ -320,14 +431,14 @@ Dashboard is lowest priority for an AI-first tool—but valuable for monitoring 
 ### Integration Tests
 - [x] API endpoint tests with actual NGINX container
 - [x] SSL workflow tests with production Let's Encrypt
-- [ ] MCP protocol compliance tests
+- [ ] MCP protocol compliance tests (Phase 6.2)
 
-### Agent Tests
+### Agent Tests (Phase 6.2)
 - [ ] Simulated agent conversation flows
 - [ ] Error recovery scenarios
 - [ ] Multi-step workflow tests
 
-### CI/CD
+### CI/CD (Phase 6.1)
 - [ ] GitHub Actions pipeline
 - [ ] Automated testing on PR
 - [ ] Container image builds
@@ -339,13 +450,17 @@ Dashboard is lowest priority for an AI-first tool—but valuable for monitoring 
 
 | Version | Phase | Key Features |
 |---------|-------|--------------|
-| v0.1.0 | 1 | MVP read-only API (current) |
+| v0.1.0 | 1 | MVP read-only API |
 | v0.2.0 | 2 | AI-native core: transactions, rich context, reliable parser, CRUD, MCP design |
 | v0.3.0 | 3 | SSL management + MCP server implementation |
 | v0.4.0 | 4 | GPT integration + agent workflows |
 | v0.5.0 | 5 | Authentication & security |
-| v0.6.0 | 6 | Web dashboard |
-| v1.0.0 | 7 | Multi-server, monitoring, production hardening |
+| v0.6.0 | 6 | CI/CD pipeline, expanded test coverage, 2FA |
+| v0.7.0 | 7 | Web dashboard (hybrid HTMX + Alpine.js) |
+| v0.8.0 | 8 | Observability, metrics, Prometheus endpoint |
+| v0.9.0 | 9 | Multi-server management |
+| v1.0.0 | 9+ | Production-hardened multi-server with full observability |
+| v1.x | 10 | Template ecosystem, community integrations |
 
 ---
 
