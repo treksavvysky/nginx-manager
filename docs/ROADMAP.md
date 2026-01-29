@@ -50,7 +50,7 @@ The following principles guide all development decisions:
 
 ## Phase 2: AI-Native Core
 
-**Status: In Progress**
+**Status: Complete**
 
 This phase establishes the foundation for reliable AI agent interaction. The parser upgrade is a prerequisite—AI agents cannot trust a system that misparses configurations. The transaction model and rich context patterns must be in place before adding more operations.
 
@@ -163,7 +163,7 @@ SSL certificate management and MCP server are fully implemented.
 - [x] MCP-optimized response formats
 - [x] MCP server deployment documentation
 
-**Implementation**: MCP server located in `api/mcp/`. See `docs/MCP_DEPLOYMENT.md` for usage.
+**Implementation**: MCP server located in `api/mcp_server/`. See `docs/MCP_DEPLOYMENT.md` for usage.
 
 ---
 
@@ -293,8 +293,8 @@ Dashboard is lowest priority for an AI-first tool—but valuable for monitoring 
 - [x] Certificate manager tests (15 tests)
 - [x] Workflow engine tests (26 tests)
 - [x] Workflow model tests (29 tests)
-- [x] GPT schema generation tests (17 tests)
-- [x] Total: 249 unit tests
+- [x] GPT schema generation tests (18 tests)
+- [x] Total: 250 unit tests
 
 ### Integration Tests
 - [x] API endpoint tests with actual NGINX container
