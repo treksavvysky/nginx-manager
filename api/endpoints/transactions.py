@@ -8,7 +8,10 @@ operations for configuration changes.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from core.auth_dependency import get_current_auth, require_role
+from models.auth import AuthContext, Role
 
 from models.transaction import (
     TransactionStatus,
@@ -65,7 +68,8 @@ async def list_transactions(
         description="Filter by resource type (site, nginx, certificate)"
     ),
     limit: int = Query(50, ge=1, le=200, description="Maximum transactions to return"),
-    offset: int = Query(0, ge=0, description="Offset for pagination")
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    auth: AuthContext = Depends(require_role(Role.VIEWER)),
 ) -> TransactionListResponse:
     """List transactions with filtering."""
     transaction_manager = get_transaction_manager()
@@ -99,7 +103,7 @@ Returns:
 - Understand failure causes from error details
 """
 )
-async def get_transaction(transaction_id: str) -> TransactionDetail:
+async def get_transaction(transaction_id: str, auth: AuthContext = Depends(require_role(Role.VIEWER))) -> TransactionDetail:
     """Get detailed transaction information."""
     transaction_manager = get_transaction_manager()
 
@@ -149,7 +153,8 @@ Restore configuration to state before a transaction.
 )
 async def rollback_transaction(
     transaction_id: str,
-    request: RollbackRequest = RollbackRequest()
+    request: RollbackRequest = RollbackRequest(),
+    auth: AuthContext = Depends(require_role(Role.ADMIN)),
 ) -> RollbackResult:
     """Rollback a transaction to restore previous configuration."""
     transaction_manager = get_transaction_manager()
@@ -197,7 +202,7 @@ Check if a transaction can be rolled back.
 Returns whether rollback is possible and the reason if not.
 """
 )
-async def check_rollback_eligibility(transaction_id: str) -> dict:
+async def check_rollback_eligibility(transaction_id: str, auth: AuthContext = Depends(require_role(Role.VIEWER))) -> dict:
     """Check if a transaction can be rolled back."""
     transaction_manager = get_transaction_manager()
 

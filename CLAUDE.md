@@ -57,6 +57,8 @@ Client (AI Agents / REST API)
 - `api/endpoints/events.py` - Event audit log endpoints
 - `api/endpoints/workflows.py` - Compound workflow endpoints (setup-site, migrate-site) with SSE streaming
 - `api/endpoints/gpt.py` - GPT integration endpoints (openapi.json schema, instructions)
+- `api/endpoints/auth.py` - Authentication endpoints (bootstrap, API key CRUD, token exchange/refresh)
+- `api/endpoints/users.py` - User management endpoints (login, user CRUD, password change)
 - `api/core/config_manager/crossplane_parser.py` - Crossplane-based NGINX parser (full directive support: server, location, upstream, map, geo, include resolution)
 - `api/core/config_manager/adapter.py` - Converts parsed config to API response format
 - `api/core/config_generator/generator.py` - Jinja2-based NGINX config generator
@@ -69,15 +71,22 @@ Client (AI Agents / REST API)
 - `api/core/transaction_manager.py` - Transaction lifecycle management with snapshots
 - `api/core/event_store.py` - Event persistence and querying
 - `api/core/snapshot_service.py` - Configuration state capture and restoration
-- `api/core/context_helpers.py` - Generates suggestions and warnings for AI-friendly responses
-- `api/core/database.py` - SQLite async database management (transactions, events, certificates, acme_accounts)
+- `api/core/context_helpers.py` - Generates suggestions, warnings, and security warnings for AI-friendly responses
+- `api/core/auth_service.py` - API key + JWT token management (creation, validation, hashing)
+- `api/core/auth_dependency.py` - FastAPI Depends() for authentication and role-based access control
+- `api/core/user_service.py` - User account management (bcrypt hashing, login with lockout, CRUD)
+- `api/core/encryption_service.py` - Fernet encryption for private key storage at rest
+- `api/core/rate_limiter.py` - slowapi rate limiting configuration
+- `api/core/request_logger.py` - HTTP request logging middleware
+- `api/core/database.py` - SQLite async database management (transactions, events, certificates, acme_accounts, api_keys, users)
 - `api/core/workflow_engine.py` - Generic workflow execution engine with checkpoint-based rollback and progress callbacks
 - `api/core/workflow_definitions.py` - Concrete step implementations for setup-site and migrate-site workflows
 - `api/core/gpt_schema.py` - Transforms FastAPI OpenAPI schema for Custom GPT Actions compatibility (tag filtering, description truncation, operationId enforcement)
 - `api/models/nginx.py` - Rich data models: ServerBlock, LocationBlock, UpstreamBlock, MapBlock, GeoBlock, SSLConfig, NginxOperationResult, ParsedNginxConfig
 - `api/models/certificate.py` - SSL certificate models: Certificate, CertificateStatus, CertificateRequestCreate, CertificateUploadRequest, CertificateMutationResponse
 - `api/models/transaction.py` - Transaction, TransactionDetail, RollbackResult models
-- `api/models/event.py` - Event, EventFilters models
+- `api/models/event.py` - Event, EventFilters models (with audit fields: client_ip, user_id, api_key_id)
+- `api/models/auth.py` - Auth models: Role, AuthContext, APIKey, User, LoginRequest/Response, TokenRequest/Response
 - `api/models/config.py` - Pydantic models: SiteConfig, SiteConfigResponse, ConfigValidationResult
 - `api/models/site_requests.py` - Site CRUD request/response models: SiteCreateRequest, SiteUpdateRequest, SiteMutationResponse, DryRunResult, DryRunDiff
 - `api/models/workflow.py` - Workflow models: SetupSiteRequest, MigrateSiteRequest, WorkflowResponse, WorkflowDryRunResponse, WorkflowProgressEvent
@@ -149,6 +158,16 @@ Environment variables managed via Pydantic BaseSettings in `api/config.py`:
 - `CERT_EXPIRY_WARNING_DAYS` - Days before expiry to generate warnings (default: 14)
 - `WORKFLOW_STEP_TIMEOUT` - Timeout in seconds for individual workflow steps (default: 120)
 - `WORKFLOW_AUTO_ROLLBACK` - Automatically rollback checkpoint steps on workflow failure (default: true)
+- `AUTH_ENABLED` - Enable API key/JWT authentication (default: false for backward compatibility)
+- `AUTH_MASTER_KEY` - Master key for bootstrapping the first admin API key
+- `JWT_SECRET_KEY` - Secret key for signing JWT tokens (required when AUTH_ENABLED=true)
+- `JWT_ALGORITHM` - Algorithm for JWT signing (default: HS256)
+- `JWT_EXPIRY_MINUTES` - JWT token expiration time in minutes (default: 60)
+- `MCP_API_KEY` - API key for MCP server authentication (stdio transport)
+- `MCP_REQUIRE_AUTH` - Require authentication for MCP connections (default: true)
+- `CORS_ALLOWED_ORIGINS` - Comma-separated list of allowed CORS origins (empty = wildcard in debug mode only)
+- `ENCRYPT_PRIVATE_KEYS` - Encrypt SSL private keys at rest using Fernet (default: false)
+- `PRIVATE_KEY_ENCRYPTION_KEY` - Passphrase for private key encryption (min 16 chars recommended)
 
 ## API Usage Examples
 
@@ -301,7 +320,7 @@ The API can power an OpenAI Custom GPT for managing NGINX via natural language.
 1. Fetch the GPT-compatible schema: `GET /gpt/openapi.json?server_url=https://your-domain.com`
 2. Fetch the system instructions: `GET /gpt/instructions`
 3. In the GPT builder, import the schema and paste the instructions
-4. Set authentication to API Key with header `X-API-Key` (placeholder for Phase 5)
+4. Set authentication to API Key with header `X-API-Key`
 
 ### Schema Features
 - Filters endpoints by tag (Site Configuration, NGINX Control, SSL Certificates, Agent Workflows)
@@ -327,7 +346,48 @@ Compound operations that orchestrate multiple API calls with checkpoint-based ro
 
 See `docs/AGENT_WORKFLOWS.md` for full documentation.
 
+## Authentication & Security (Phase 5)
+
+Authentication is **opt-in** via `AUTH_ENABLED=true` (default: false for backward compatibility).
+
+### Auth Methods
+- **API Key**: `X-API-Key` header, SHA-256 hashed storage, key format `ngx_` + 64 hex chars
+- **JWT Token**: `Authorization: Bearer <token>` header, exchanged from API key or user login
+- **User Login**: `POST /auth/login` with username/password, returns JWT token
+
+### Role Hierarchy
+- **ADMIN** (level 3): Full access including user/key management and rollback
+- **OPERATOR** (level 2): Create, update, delete sites/certs, reload NGINX
+- **VIEWER** (level 1): Read-only access
+
+### Security Features
+- Rate limiting (slowapi): 60 req/min default, keyed by IP + auth identity
+- Account lockout: 5 failed login attempts = 30 min lockout
+- Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Cache-Control
+- NGINX config injection prevention (semicolons, braces, backticks, dollar signs blocked)
+- SSRF prevention (cloud metadata endpoints blocked in proxy_pass)
+- Private key encryption at rest (Fernet, optional)
+- Security warnings surfaced in `/health` endpoint
+- MCP auth: API key env var for stdio, Bearer header for HTTP transport
+
+### Bootstrap Flow
+```bash
+# 1. Set environment variables
+AUTH_ENABLED=true AUTH_MASTER_KEY=your-secret JWT_SECRET_KEY=your-jwt-secret
+
+# 2. Create first admin key
+curl -X POST http://localhost:8000/auth/bootstrap -H "X-Master-Key: your-secret"
+
+# 3. Create user account
+curl -X POST http://localhost:8000/auth/users \
+  -H "X-API-Key: ngx_..." -d '{"username":"admin","password":"SecurePass123!","role":"admin"}'
+
+# 4. Login
+curl -X POST http://localhost:8000/auth/login \
+  -d '{"username":"admin","password":"SecurePass123!"}'
+```
+
 ## Current Limitations
 
-- No authentication/authorization (Phase 5)
 - No web dashboard (Phase 6, API only)
+- 2FA not yet available (Phase 5.2b)

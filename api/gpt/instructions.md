@@ -79,8 +79,34 @@ If an API call fails:
 - For 400 errors: Invalid input - review the request parameters
 - For 500 errors: Internal error - check events for details
 
+## Authentication
+
+When `AUTH_ENABLED=true`, all API requests must be authenticated. Two methods are supported:
+
+### API Key Authentication
+Include the key in the `X-API-Key` header:
+```
+X-API-Key: ngx_your_api_key_here
+```
+
+### JWT Token Authentication
+1. Exchange an API key for a JWT token: `POST /auth/token` with `{"api_key": "ngx_..."}`
+2. Or login with username/password: `POST /auth/login` with `{"username": "...", "password": "..."}`
+3. Include the token in subsequent requests: `Authorization: Bearer <token>`
+
+### Role-Based Access
+- **VIEWER**: Read-only access (GET endpoints)
+- **OPERATOR**: Read + write access (create, update, delete sites/certs, reload NGINX)
+- **ADMIN**: Full access including user management, API key management, and rollback
+
+### Initial Setup
+When `AUTH_ENABLED=true` and no API keys exist:
+1. Set `AUTH_MASTER_KEY` environment variable
+2. Call `POST /auth/bootstrap` with `X-Master-Key` header to create the first admin key
+3. Use the returned key for all subsequent operations
+
 ## Limitations
 
-- No authentication is currently enforced (planned for a future release)
 - SSL certificates require the domain's DNS to point to this server
 - Port 80 must be accessible for Let's Encrypt HTTP-01 challenges
+- 2FA is not yet available (planned for a future release)

@@ -85,10 +85,22 @@ def generate_gpt_schema(
     # 4. Ensure operationId on every operation
     _ensure_operation_ids(schema)
 
-    # 5. Truncate long descriptions
+    # 5. Add security requirement to all operations
+    _add_security_to_operations(schema)
+
+    # 6. Truncate long descriptions
     _truncate_descriptions(schema, max_length=max_description_length)
 
     return schema
+
+
+def _add_security_to_operations(schema: Dict[str, Any]) -> None:
+    """Add API key security requirement to all operations."""
+    for path, methods in schema.get("paths", {}).items():
+        for method, operation in methods.items():
+            if method not in ("get", "post", "put", "delete", "patch"):
+                continue
+            operation["security"] = [{"apiKey": []}]
 
 
 def _ensure_operation_ids(schema: Dict[str, Any]) -> None:

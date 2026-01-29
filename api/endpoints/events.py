@@ -9,7 +9,10 @@ import logging
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from core.auth_dependency import get_current_auth, require_role
+from models.auth import AuthContext, Role
 
 from models.event import (
     Event,
@@ -80,7 +83,8 @@ async def list_events(
         description="Filter by transaction ID"
     ),
     page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(50, ge=1, le=200, description="Events per page")
+    page_size: int = Query(50, ge=1, le=200, description="Events per page"),
+    auth: AuthContext = Depends(require_role(Role.VIEWER)),
 ) -> EventsListResponse:
     """List events with filtering and pagination."""
     event_store = get_event_store()
@@ -117,7 +121,8 @@ async def get_event_counts(
     since: Optional[datetime] = Query(
         None,
         description="Only count events after this timestamp"
-    )
+    ),
+    auth: AuthContext = Depends(require_role(Role.VIEWER)),
 ) -> EventCountBySeverity:
     """Get event counts by severity."""
     event_store = get_event_store()
@@ -135,7 +140,7 @@ Returns complete event information including all metadata
 and the `details` field with structured context.
 """
 )
-async def get_event(event_id: str) -> Event:
+async def get_event(event_id: str, auth: AuthContext = Depends(require_role(Role.VIEWER))) -> Event:
     """Get a specific event by ID."""
     event_store = get_event_store()
 

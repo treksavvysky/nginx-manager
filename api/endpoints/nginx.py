@@ -13,7 +13,10 @@ import time
 from datetime import datetime
 from typing import Union
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from core.auth_dependency import get_current_auth, require_role
+from models.auth import AuthContext, Role
 
 from config import settings
 from core.docker_service import (
@@ -107,7 +110,8 @@ If health check fails after reload, previous configuration is restored.
     }
 )
 async def reload_nginx(
-    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ) -> Union[NginxOperationResult, NginxDryRunResult]:
     """Gracefully reload NGINX configuration."""
     start_time = time.time()
@@ -315,7 +319,8 @@ or when NGINX is in an inconsistent state).
     }
 )
 async def restart_nginx(
-    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ) -> Union[NginxOperationResult, NginxDryRunResult]:
     """Full restart of NGINX container."""
     start_time = time.time()
@@ -452,7 +457,9 @@ Returns comprehensive information about:
         503: {"description": "NGINX container not available"}
     }
 )
-async def get_nginx_status() -> NginxStatusResponse:
+async def get_nginx_status(
+    auth: AuthContext = Depends(require_role(Role.VIEWER)),
+) -> NginxStatusResponse:
     """Get detailed NGINX status information."""
     try:
         status = await docker_service.get_container_status()
@@ -509,7 +516,9 @@ to verify changes are valid.
         503: {"description": "NGINX container not available"}
     }
 )
-async def test_nginx_config() -> NginxConfigTestResult:
+async def test_nginx_config(
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
+) -> NginxConfigTestResult:
     """Test NGINX configuration validity."""
     try:
         success, stdout, stderr = await docker_service.test_config()

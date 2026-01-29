@@ -12,12 +12,19 @@ for NGINX server management in containerized environments.
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response, JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 import uvicorn
 import logging
 from datetime import datetime
 
-from endpoints import sites, nginx, events, transactions, certificates, workflows, gpt
+from endpoints import sites, nginx, events, transactions, certificates, workflows, gpt, auth, users
 from config import settings, ensure_directories
+from core.request_logger import RequestLoggerMiddleware
+from core.rate_limiter import limiter
 
 # Configure logging
 logging.basicConfig(
@@ -99,6 +106,26 @@ app = FastAPI(
     openapi_url="/openapi.json"
 )
 
+# Rate limiting
+app.state.limiter = limiter
+
+
+def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Custom 429 handler with Retry-After and AI-friendly error."""
+    retry_after = getattr(exc, "retry_after", 60)
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": "Rate limit exceeded. Please wait before making more requests.",
+            "retry_after_seconds": retry_after,
+            "suggestion": "Reduce request frequency or contact an admin for a rate limit override.",
+        },
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+
 # Include API routers
 app.include_router(sites.router)
 app.include_router(nginx.router)
@@ -107,11 +134,37 @@ app.include_router(transactions.router)
 app.include_router(certificates.router)
 app.include_router(workflows.router)
 app.include_router(gpt.router)
+app.include_router(auth.router)
+app.include_router(users.router)
 
-# CORS middleware for web interface compatibility
+# Security headers middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Request logging middleware
+app.add_middleware(RequestLoggerMiddleware)
+
+# CORS middleware — restrict origins in production
+_cors_origins = (
+    [o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()]
+    if settings.cors_allowed_origins
+    else ["*"] if settings.api_debug else []
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -286,6 +339,14 @@ async def health_check():
         ssl_status["status"] = "error"
         ssl_status["message"] = str(e)
 
+    # Security warnings
+    security_warnings = []
+    try:
+        from core.context_helpers import get_security_warnings
+        security_warnings = get_security_warnings()
+    except Exception as e:
+        logger.warning(f"Failed to get security warnings: {e}")
+
     return {
         "status": "healthy" if nginx_healthy else ("degraded" if nginx_running else "unhealthy"),
         "timestamp": datetime.now().isoformat(),
@@ -301,7 +362,8 @@ async def health_check():
         },
         "system_state": system_state,
         "suggestions": suggestions,
-        "ssl": ssl_status
+        "ssl": ssl_status,
+        "security_warnings": security_warnings,
     }
 
 

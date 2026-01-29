@@ -152,7 +152,7 @@ SSL certificate management and MCP server are fully implemented.
 ### 3.4 Custom Certificates
 - [x] Upload custom SSL certificates
 - [x] Certificate chain validation
-- [ ] Private key security (encrypted storage)
+- [x] Private key security (encrypted storage) — implemented in Phase 5
 - [x] Expiry tracking for custom certs
 
 ### 3.5 MCP Server Implementation
@@ -200,27 +200,39 @@ Complete AI agent integration with support for complex multi-step operations.
 
 ## Phase 5: Authentication & Security
 
-**Status: Planned**
+**Status: Complete**
 
-Authentication added after AI integration is stable—agents need to work before they need to authenticate.
+Full authentication, authorization, and security hardening. Backward-compatible: `AUTH_ENABLED=false` (default) preserves existing behavior.
 
 ### 5.1 API Authentication
-- [ ] API key authentication
-- [ ] JWT token support for sessions
-- [ ] Rate limiting per client
-- [ ] Request logging and audit trail
+- [x] API key authentication (`X-API-Key` header, SHA-256 hashed storage)
+- [x] JWT token support for sessions (`Authorization: Bearer` header)
+- [x] Token exchange (API key -> JWT) and refresh
+- [x] Rate limiting per client (slowapi, in-memory, IP+identity keying)
+- [x] Request logging and audit trail (client_ip, user_id, api_key_id on events)
+- [x] Bootstrap endpoint for initial admin key setup
 
 ### 5.2 User Management
-- [ ] User accounts with roles (admin, operator, viewer)
-- [ ] Session management
-- [ ] Password policies and optional 2FA
+- [x] User accounts with roles (admin, operator, viewer)
+- [x] Username/password login with JWT token issuance
+- [x] bcrypt password hashing
+- [x] Password policies (min 12 chars, mixed case + digit)
+- [x] Account lockout after 5 failed attempts (30 min)
+- [x] User CRUD (create, list, get, update, delete)
+- [x] Password change (self + admin reset)
+- [ ] Optional 2FA (deferred to 5.2b)
 
 ### 5.3 Security Hardening
-- [ ] Input sanitization for config generation
-- [ ] Path traversal prevention
-- [ ] Secrets management (environment/vault)
-- [ ] Security headers on API responses
-- [ ] MCP authentication integration
+- [x] Input sanitization for config generation (NGINX directive injection prevention)
+- [x] SSRF prevention in proxy_pass validation (cloud metadata endpoint blocking)
+- [x] Private key encryption at rest (Fernet/AES, PBKDF2 key derivation)
+- [x] Security headers on API responses (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Cache-Control)
+- [x] CORS tightening (wildcard only in debug mode, configurable origins)
+- [x] MCP authentication integration (API key for stdio, Bearer for HTTP)
+- [x] Security warnings in `/health` endpoint (auth, CORS, encryption, debug mode, JWT secret)
+- [x] Role-based access control on all endpoints (VIEWER/OPERATOR/ADMIN hierarchy)
+
+**Implementation**: Auth service in `api/core/auth_service.py`, user service in `api/core/user_service.py`, auth dependency in `api/core/auth_dependency.py`. Endpoints at `/auth/*`.
 
 ---
 
@@ -294,7 +306,16 @@ Dashboard is lowest priority for an AI-first tool—but valuable for monitoring 
 - [x] Workflow engine tests (26 tests)
 - [x] Workflow model tests (29 tests)
 - [x] GPT schema generation tests (18 tests)
-- [x] Total: 250 unit tests
+- [x] Authentication and auth dependency tests (23 tests)
+- [x] JWT token tests (19 tests)
+- [x] Input sanitization tests (27 tests)
+- [x] Security headers tests (11 tests)
+- [x] Rate limiting tests (11 tests)
+- [x] Security suggestions tests (14 tests)
+- [x] Encryption service tests (12 tests)
+- [x] User service tests (24 tests)
+- [x] User endpoint/model tests (25 tests)
+- [x] Total: 420 unit tests
 
 ### Integration Tests
 - [x] API endpoint tests with actual NGINX container

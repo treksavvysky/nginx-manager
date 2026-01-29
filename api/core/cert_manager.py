@@ -16,6 +16,7 @@ from datetime import datetime
 
 from config import settings
 from core.database import get_database, serialize_json, deserialize_json
+from core.encryption_service import get_encryption_service
 from core.acme_service import (
     get_acme_service,
     ACMEService,
@@ -87,12 +88,15 @@ class CertManager:
         )
         if row:
             from models.certificate import ACMEAccount
+            # Decrypt the private key if it was encrypted at rest
+            encryption = get_encryption_service()
+            private_key_pem = encryption.decrypt_string(row["private_key_pem"])
             return ACMEAccount(
                 id=row["id"],
                 email=row["email"],
                 directory_url=row["directory_url"],
                 account_url=row["account_url"],
-                private_key_pem=row["private_key_pem"]
+                private_key_pem=private_key_pem
             )
         return None
 
@@ -100,12 +104,15 @@ class CertManager:
         """Save an ACME account to the database for reuse across restarts."""
         import uuid
         account_id = account.id or f"acme-{uuid.uuid4().hex[:12]}"
+        # Encrypt the private key at rest if enabled
+        encryption = get_encryption_service()
+        encrypted_key_pem = encryption.encrypt_string(account.private_key_pem)
         await self.db.execute(
             """INSERT OR REPLACE INTO acme_accounts
                (id, email, directory_url, account_url, private_key_pem)
                VALUES (?, ?, ?, ?, ?)""",
             (account_id, account.email, account.directory_url,
-             account.account_url, account.private_key_pem)
+             account.account_url, encrypted_key_pem)
         )
         logger.info(f"Saved ACME account {account_id} for {account.directory_url}")
 
@@ -332,9 +339,10 @@ class CertManager:
             fullchain_content = cert_pem
         fullchain_path.write_bytes(fullchain_content)
 
-        # Save private key
+        # Save private key (encrypt at rest if enabled)
         privkey_path = cert_dir / "privkey.pem"
-        privkey_path.write_bytes(key_pem)
+        encryption = get_encryption_service()
+        privkey_path.write_bytes(encryption.encrypt(key_pem))
         # Restrict permissions on private key
         privkey_path.chmod(0o600)
 

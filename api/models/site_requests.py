@@ -9,6 +9,7 @@ import re
 from enum import Enum
 from typing import Optional, List, Dict
 from datetime import datetime
+from urllib.parse import urlparse
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
@@ -111,10 +112,31 @@ class SiteCreateRequest(BaseModel):
     @field_validator("proxy_pass")
     @classmethod
     def validate_proxy_pass(cls, v: Optional[str]) -> Optional[str]:
-        """Validate proxy pass URL."""
-        if v is not None:
-            if not v.startswith(("http://", "https://")):
-                raise ValueError("Proxy pass must be an HTTP or HTTPS URL")
+        """Validate proxy pass URL with strict parsing."""
+        if v is None:
+            return v
+        parsed = urlparse(v)
+        # Must be http or https
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("Proxy pass must be an HTTP or HTTPS URL")
+        # Must have a host
+        if not parsed.hostname:
+            raise ValueError("Proxy pass URL must include a hostname")
+        # Reject credentials in URL
+        if parsed.username or parsed.password:
+            raise ValueError("Proxy pass URL must not contain credentials")
+        # Reject query strings and fragments
+        if parsed.query:
+            raise ValueError("Proxy pass URL must not contain query strings")
+        if parsed.fragment:
+            raise ValueError("Proxy pass URL must not contain fragments")
+        # Reject cloud metadata endpoints (SSRF prevention)
+        metadata_hosts = {"169.254.169.254", "metadata.google.internal"}
+        if parsed.hostname in metadata_hosts:
+            raise ValueError("Proxy pass URL must not target cloud metadata endpoints")
+        # Validate port if specified
+        if parsed.port is not None and (parsed.port < 1 or parsed.port > 65535):
+            raise ValueError("Proxy pass port must be between 1 and 65535")
         return v
 
     @model_validator(mode="after")
@@ -191,10 +213,25 @@ class SiteUpdateRequest(BaseModel):
     @field_validator("proxy_pass")
     @classmethod
     def validate_proxy_pass(cls, v: Optional[str]) -> Optional[str]:
-        """Validate proxy pass URL."""
-        if v is not None:
-            if not v.startswith(("http://", "https://")):
-                raise ValueError("Proxy pass must be an HTTP or HTTPS URL")
+        """Validate proxy pass URL with strict parsing."""
+        if v is None:
+            return v
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("Proxy pass must be an HTTP or HTTPS URL")
+        if not parsed.hostname:
+            raise ValueError("Proxy pass URL must include a hostname")
+        if parsed.username or parsed.password:
+            raise ValueError("Proxy pass URL must not contain credentials")
+        if parsed.query:
+            raise ValueError("Proxy pass URL must not contain query strings")
+        if parsed.fragment:
+            raise ValueError("Proxy pass URL must not contain fragments")
+        metadata_hosts = {"169.254.169.254", "metadata.google.internal"}
+        if parsed.hostname in metadata_hosts:
+            raise ValueError("Proxy pass URL must not target cloud metadata endpoints")
+        if parsed.port is not None and (parsed.port < 1 or parsed.port > 65535):
+            raise ValueError("Proxy pass port must be between 1 and 65535")
         return v
 
 

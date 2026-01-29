@@ -10,8 +10,11 @@ import json
 import logging
 from typing import Union
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
+
+from core.auth_dependency import get_current_auth, require_role
+from models.auth import AuthContext, Role
 
 from models.workflow import (
     SetupSiteRequest,
@@ -66,6 +69,7 @@ async def setup_site(
     request: SetupSiteRequest,
     dry_run: bool = Query(default=False, description="Preview workflow without executing"),
     stream: bool = Query(default=False, description="Stream progress via Server-Sent Events"),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ):
     """Execute the setup-site workflow."""
     context = request.model_dump()
@@ -112,6 +116,7 @@ async def migrate_site(
     request: MigrateSiteRequest,
     dry_run: bool = Query(default=False, description="Preview workflow without executing"),
     stream: bool = Query(default=False, description="Stream progress via Server-Sent Events"),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ):
     """Execute the migrate-site workflow."""
     context = request.model_dump()

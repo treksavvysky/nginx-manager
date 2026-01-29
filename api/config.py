@@ -141,6 +141,64 @@ class Settings(BaseSettings):
         description="Automatically rollback checkpoint steps on workflow failure"
     )
 
+    # Authentication (Phase 5)
+    auth_enabled: bool = Field(
+        default=False,
+        alias="AUTH_ENABLED",
+        description="Enable API key authentication"
+    )
+    auth_master_key: Optional[str] = Field(
+        default=None,
+        alias="AUTH_MASTER_KEY",
+        description="Master key for bootstrapping the first admin API key"
+    )
+    jwt_secret_key: Optional[str] = Field(
+        default=None,
+        alias="JWT_SECRET_KEY",
+        description="Secret key for signing JWT tokens (required when AUTH_ENABLED=true)"
+    )
+    jwt_algorithm: str = Field(
+        default="HS256",
+        alias="JWT_ALGORITHM",
+        description="Algorithm for JWT signing"
+    )
+    jwt_expiry_minutes: int = Field(
+        default=60,
+        alias="JWT_EXPIRY_MINUTES",
+        description="JWT token expiration time in minutes"
+    )
+
+    # MCP Authentication (Phase 5.3)
+    mcp_api_key: Optional[str] = Field(
+        default=None,
+        alias="MCP_API_KEY",
+        description="API key for MCP server authentication (stdio transport)"
+    )
+    mcp_require_auth: bool = Field(
+        default=True,
+        alias="MCP_REQUIRE_AUTH",
+        description="Require authentication for MCP connections"
+    )
+
+    # CORS & Security (Phase 5.3)
+    cors_allowed_origins: str = Field(
+        default="",
+        alias="CORS_ALLOWED_ORIGINS",
+        description="Comma-separated list of allowed CORS origins (empty = wildcard in debug mode only)"
+    )
+
+    # Private Key Encryption (Phase 3.4 carry-over)
+    encrypt_private_keys: bool = Field(
+        default=False,
+        alias="ENCRYPT_PRIVATE_KEYS",
+        description="Encrypt SSL private keys at rest using Fernet"
+    )
+    private_key_encryption_key: Optional[str] = Field(
+        default=None,
+        alias="PRIVATE_KEY_ENCRYPTION_KEY",
+        description="Passphrase for private key encryption (min 16 chars recommended)"
+    )
+
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     

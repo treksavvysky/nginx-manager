@@ -476,6 +476,69 @@ def get_cert_diagnostic_suggestions(
     return suggestions
 
 
+def get_security_warnings() -> List[Dict[str, Any]]:
+    """
+    Generate security warnings based on current configuration.
+
+    Checks for common security misconfigurations and returns
+    actionable warnings for administrators and AI agents.
+    """
+    from config import settings
+
+    warnings = []
+
+    if not settings.auth_enabled:
+        warnings.append(Warning(
+            code="auth_disabled",
+            message="API authentication is disabled. All endpoints are publicly accessible.",
+            suggestion="Set AUTH_ENABLED=true and configure API keys for production use"
+        ).to_dict())
+
+    if settings.api_debug:
+        warnings.append(Warning(
+            code="debug_mode",
+            message="Debug mode is enabled. This exposes verbose error details.",
+            suggestion="Set API_DEBUG=false in production"
+        ).to_dict())
+
+    if settings.auth_enabled and not settings.jwt_secret_key:
+        warnings.append(Warning(
+            code="no_jwt_secret",
+            message="JWT_SECRET_KEY is not set. JWT token authentication will not work.",
+            suggestion="Set JWT_SECRET_KEY to a strong random value (min 32 chars)"
+        ).to_dict())
+
+    if settings.auth_enabled and settings.jwt_secret_key and len(settings.jwt_secret_key) < 32:
+        warnings.append(Warning(
+            code="weak_jwt_secret",
+            message="JWT_SECRET_KEY is shorter than 32 characters.",
+            suggestion="Use a cryptographically random key of at least 32 characters"
+        ).to_dict())
+
+    if not settings.cors_allowed_origins and not settings.api_debug:
+        warnings.append(Warning(
+            code="cors_no_origins",
+            message="No CORS origins configured and debug mode is off. CORS requests will be rejected.",
+            suggestion="Set CORS_ALLOWED_ORIGINS if web clients need API access"
+        ).to_dict())
+
+    if settings.cors_allowed_origins == "*" or (not settings.cors_allowed_origins and settings.api_debug):
+        warnings.append(Warning(
+            code="cors_wildcard",
+            message="CORS allows requests from any origin.",
+            suggestion="Restrict CORS_ALLOWED_ORIGINS to specific domains in production"
+        ).to_dict())
+
+    if not settings.encrypt_private_keys:
+        warnings.append(Warning(
+            code="encryption_disabled",
+            message="Private key encryption at rest is disabled.",
+            suggestion="Set ENCRYPT_PRIVATE_KEYS=true and PRIVATE_KEY_ENCRYPTION_KEY for production"
+        ).to_dict())
+
+    return warnings
+
+
 def get_error_context(
     error_type: str,
     error_message: str,

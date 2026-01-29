@@ -5,7 +5,7 @@ REST API endpoints for managing NGINX server block configurations.
 Supports full CRUD operations with transaction support for rollback.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import JSONResponse
 from pathlib import Path
 from typing import List, Optional, Union
@@ -14,6 +14,8 @@ import shutil
 import tempfile
 
 from config import get_nginx_conf_path, settings
+from core.auth_dependency import get_current_auth, require_role
+from models.auth import AuthContext, Role
 from core.config_manager import nginx_parser, ConfigAdapter
 from core.config_generator import get_config_generator, ConfigGeneratorError
 from core.docker_service import docker_service, DockerServiceError
@@ -92,7 +94,9 @@ router = APIRouter(prefix="/sites", tags=["Site Configuration"])
         500: {"description": "Internal server error during configuration parsing"}
     }
 )
-async def list_sites() -> List[SiteConfigResponse]:
+async def list_sites(
+    auth: AuthContext = Depends(require_role(Role.VIEWER)),
+) -> List[SiteConfigResponse]:
     """
     List all NGINX site configurations.
     
@@ -220,7 +224,10 @@ async def list_sites() -> List[SiteConfigResponse]:
         500: {"description": "Error parsing configuration file"}
     }
 )
-async def get_site(site_name: str) -> SiteConfigResponse:
+async def get_site(
+    site_name: str,
+    auth: AuthContext = Depends(require_role(Role.VIEWER)),
+) -> SiteConfigResponse:
     """
     Get detailed configuration for a specific site.
     
@@ -319,7 +326,8 @@ async def get_site(site_name: str) -> SiteConfigResponse:
 )
 async def create_site(
     request: SiteCreateRequest,
-    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ) -> Union[SiteMutationResponse, DryRunResult]:
     """
     Create a new NGINX site configuration.
@@ -542,7 +550,8 @@ async def create_site(
 async def update_site(
     site_name: str,
     request: SiteUpdateRequest,
-    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ) -> Union[SiteMutationResponse, DryRunResult]:
     """
     Update an existing site configuration.
@@ -770,7 +779,8 @@ async def update_site(
 async def delete_site(
     site_name: str,
     auto_reload: bool = Query(default=False, description="Reload NGINX after deletion"),
-    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ) -> Union[SiteDeleteResponse, DryRunResult]:
     """
     Delete a site configuration.
@@ -906,7 +916,8 @@ async def delete_site(
 async def enable_site(
     site_name: str,
     request: SiteEnableDisableRequest = None,
-    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ) -> Union[SiteMutationResponse, DryRunResult]:
     """
     Enable a disabled site.
@@ -1075,7 +1086,8 @@ async def enable_site(
 async def disable_site(
     site_name: str,
     request: SiteEnableDisableRequest = None,
-    dry_run: bool = Query(default=False, description="Preview the operation without making changes")
+    dry_run: bool = Query(default=False, description="Preview the operation without making changes"),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ) -> Union[SiteMutationResponse, DryRunResult]:
     """
     Disable a site without deleting its configuration.

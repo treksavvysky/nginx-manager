@@ -678,6 +678,44 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
     return mcp
 
 
+def _validate_mcp_auth(transport: str) -> bool:
+    """
+    Validate MCP authentication based on transport and settings.
+
+    For stdio transport: checks MCP_API_KEY env var on startup.
+    For HTTP transport: authentication is handled per-request via Bearer token.
+
+    Returns:
+        True if auth is valid or not required, False if auth failed.
+    """
+    import os
+    from config import settings
+
+    if not settings.mcp_require_auth:
+        logger.warning("MCP authentication is disabled (MCP_REQUIRE_AUTH=false)")
+        return True
+
+    if transport == "stdio":
+        env_key = os.environ.get("MCP_API_KEY", "")
+        if settings.mcp_api_key and env_key:
+            if env_key == settings.mcp_api_key:
+                logger.info("MCP stdio authentication successful")
+                return True
+            else:
+                logger.error("MCP_API_KEY does not match configured key")
+                return False
+        elif settings.mcp_api_key and not env_key:
+            logger.error("MCP_API_KEY env var required but not set")
+            return False
+        else:
+            # No key configured — allow (backward compatible)
+            logger.info("No MCP_API_KEY configured, running without auth")
+            return True
+
+    # HTTP transport auth is handled per-request by the API auth middleware
+    return True
+
+
 def run_mcp_server(
     transport: str = "stdio",
     host: str = "127.0.0.1",
@@ -695,6 +733,11 @@ def run_mcp_server(
 
     if mcp is None:
         logger.error("Failed to create MCP server")
+        return
+
+    # Validate authentication
+    if not _validate_mcp_auth(transport):
+        logger.error("MCP authentication failed — server not started")
         return
 
     if transport == "stdio":

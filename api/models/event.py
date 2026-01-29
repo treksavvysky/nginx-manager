@@ -89,6 +89,20 @@ class Event(BaseModel):
         description="Component that generated the event"
     )
 
+    # Audit fields (Phase 5)
+    client_ip: Optional[str] = Field(
+        None,
+        description="IP address of the client that triggered the event"
+    )
+    user_id: Optional[str] = Field(
+        None,
+        description="User ID if authenticated via user login"
+    )
+    api_key_id: Optional[str] = Field(
+        None,
+        description="API key ID if authenticated via API key"
+    )
+
 
 class EventFilters(BaseModel):
     """Query filters for event listing."""

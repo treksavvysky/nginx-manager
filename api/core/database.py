@@ -76,6 +76,11 @@ CREATE TABLE IF NOT EXISTS events (
 
     source TEXT DEFAULT 'api',
 
+    -- Audit fields (Phase 5)
+    client_ip TEXT,
+    user_id TEXT,
+    api_key_id TEXT,
+
     FOREIGN KEY (transaction_id) REFERENCES transactions(id)
 );
 
@@ -131,6 +136,42 @@ CREATE TABLE IF NOT EXISTS acme_accounts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_acme_accounts_directory_url ON acme_accounts(directory_url);
+
+-- API keys table (Phase 5: Authentication)
+CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    key_hash TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT,
+    role TEXT NOT NULL DEFAULT 'operator',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used TIMESTAMP,
+    expires_at TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    rate_limit_override INTEGER,
+    created_by TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_api_keys_is_active ON api_keys(is_active);
+
+-- Users table (Phase 5.2a: User Management)
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    email TEXT,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'operator',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMP,
+    password_changed_at TIMESTAMP,
+    failed_login_attempts INTEGER DEFAULT 0,
+    locked_until TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
 """
 
 
@@ -151,7 +192,31 @@ class Database:
             await db.executescript(SCHEMA)
             await db.commit()
 
+        # Run migrations for existing databases
+        await self._run_migrations()
+
         logger.info(f"Database initialized at {self.db_path}")
+
+    async def _run_migrations(self) -> None:
+        """Apply schema migrations for existing databases."""
+        migrations = [
+            # Phase 5: Add audit fields to events table
+            ("events", "client_ip", "ALTER TABLE events ADD COLUMN client_ip TEXT"),
+            ("events", "user_id", "ALTER TABLE events ADD COLUMN user_id TEXT"),
+            ("events", "api_key_id", "ALTER TABLE events ADD COLUMN api_key_id TEXT"),
+        ]
+        async with self.connection() as db:
+            for table, column, sql in migrations:
+                try:
+                    # Check if column already exists
+                    cursor = await db.execute(f"PRAGMA table_info({table})")
+                    columns = [row[1] for row in await cursor.fetchall()]
+                    if column not in columns:
+                        await db.execute(sql)
+                        logger.info(f"Migration: added {column} to {table}")
+                except Exception as e:
+                    logger.debug(f"Migration skipped for {table}.{column}: {e}")
+            await db.commit()
 
     @asynccontextmanager
     async def connection(self):

@@ -5,10 +5,12 @@ REST API endpoints for managing SSL certificates including
 Let's Encrypt automation and custom certificate uploads.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional, Union
 import logging
 
+from core.auth_dependency import get_current_auth, require_role
+from models.auth import AuthContext, Role
 from core.cert_manager import (
     get_cert_manager,
     CertManager,
@@ -89,7 +91,8 @@ async def list_certificates(
     status: Optional[CertificateStatus] = Query(
         None,
         description="Filter by certificate status"
-    )
+    ),
+    auth: AuthContext = Depends(require_role(Role.VIEWER)),
 ) -> CertificateListResponse:
     """
     List all SSL certificates with status summaries.
@@ -177,7 +180,7 @@ async def list_certificates(
         404: {"description": "Certificate not found"}
     }
 )
-async def get_certificate(domain: str) -> CertificateResponse:
+async def get_certificate(domain: str, auth: AuthContext = Depends(require_role(Role.VIEWER))) -> CertificateResponse:
     """
     Get details for a specific certificate.
     """
@@ -266,7 +269,8 @@ async def request_certificate(
     dry_run: bool = Query(
         default=False,
         description="Validate prerequisites without requesting certificate"
-    )
+    ),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ) -> Union[CertificateMutationResponse, CertificateDryRunResult]:
     """
     Request a new SSL certificate from Let's Encrypt.
@@ -442,7 +446,8 @@ async def upload_certificate(
     dry_run: bool = Query(
         default=False,
         description="Validate certificate without installing"
-    )
+    ),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ) -> Union[CertificateMutationResponse, CertificateDryRunResult]:
     """
     Upload and install a custom SSL certificate.
@@ -572,7 +577,8 @@ async def renew_certificate(
     dry_run: bool = Query(
         default=False,
         description="Check if renewal needed without renewing"
-    )
+    ),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ) -> Union[CertificateMutationResponse, CertificateDryRunResult]:
     """
     Renew an existing certificate.
@@ -678,7 +684,8 @@ async def revoke_certificate(
     dry_run: bool = Query(
         default=False,
         description="Preview revocation without actually revoking"
-    )
+    ),
+    auth: AuthContext = Depends(require_role(Role.OPERATOR)),
 ) -> Union[CertificateMutationResponse, CertificateDryRunResult]:
     """
     Revoke and remove a certificate.
@@ -777,7 +784,7 @@ async def revoke_certificate(
         200: {"description": "Diagnostic results"}
     }
 )
-async def check_ssl(domain: str) -> SSLDiagnosticResult:
+async def check_ssl(domain: str, auth: AuthContext = Depends(require_role(Role.VIEWER))) -> SSLDiagnosticResult:
     """
     Perform SSL diagnostic check for a domain.
     """

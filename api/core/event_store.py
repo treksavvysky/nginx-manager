@@ -38,7 +38,10 @@ class EventStore:
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
-        source: str = "api"
+        source: str = "api",
+        client_ip: Optional[str] = None,
+        user_id: Optional[str] = None,
+        api_key_id: Optional[str] = None,
     ) -> Event:
         """
         Record a new event to the database.
@@ -53,6 +56,9 @@ class EventStore:
             resource_id: Identifier of affected resource
             details: Additional structured event data
             source: Component that generated the event
+            client_ip: IP address of the requesting client
+            user_id: Authenticated user ID
+            api_key_id: Authenticated API key ID
 
         Returns:
             The created Event object
@@ -66,7 +72,10 @@ class EventStore:
             resource_type=resource_type,
             resource_id=resource_id,
             details=details,
-            source=source
+            source=source,
+            client_ip=client_ip,
+            user_id=user_id,
+            api_key_id=api_key_id,
         )
 
         data = {
@@ -80,13 +89,44 @@ class EventStore:
             "resource_id": event.resource_id,
             "message": event.message,
             "details_json": serialize_json(event.details),
-            "source": event.source
+            "source": event.source,
+            "client_ip": event.client_ip,
+            "user_id": event.user_id,
+            "api_key_id": event.api_key_id,
         }
 
         await self.db.insert("events", data)
         logger.debug(f"Recorded event: {event.id} [{event.severity.value}] {event.message}")
 
         return event
+
+    async def record_api_event(
+        self,
+        category: str,
+        action: str,
+        message: str,
+        auth_context=None,
+        severity: EventSeverity = EventSeverity.INFO,
+        **kwargs,
+    ) -> Event:
+        """
+        Convenience method to record an API event with auth context.
+
+        Extracts client_ip, user_id, and api_key_id from the AuthContext.
+        """
+        extra = {}
+        if auth_context is not None:
+            extra["client_ip"] = getattr(auth_context, "client_ip", None)
+            extra["user_id"] = getattr(auth_context, "user_id", None)
+            extra["api_key_id"] = getattr(auth_context, "api_key_id", None)
+        return await self.record_event(
+            category=category,
+            action=action,
+            message=message,
+            severity=severity,
+            **extra,
+            **kwargs,
+        )
 
     async def get_event(self, event_id: str) -> Optional[Event]:
         """Get a specific event by ID."""
@@ -271,7 +311,10 @@ class EventStore:
             resource_id=row.get("resource_id"),
             message=row["message"],
             details=deserialize_json(row.get("details_json")),
-            source=row.get("source", "api")
+            source=row.get("source", "api"),
+            client_ip=row.get("client_ip"),
+            user_id=row.get("user_id"),
+            api_key_id=row.get("api_key_id"),
         )
 
 

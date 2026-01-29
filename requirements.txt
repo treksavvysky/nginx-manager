@@ -32,3 +32,11 @@ josepy>=1.13.0
 
 # Background task scheduling
 APScheduler>=3.10.0
+
+# MCP (Model Context Protocol) server
+mcp[cli]>=1.0.0
+
+# Authentication (Phase 5)
+PyJWT>=2.8.0
+slowapi>=0.1.9
+bcrypt>=4.1.0

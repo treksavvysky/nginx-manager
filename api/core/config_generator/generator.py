@@ -6,6 +6,7 @@ NGINX configuration file content.
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +15,39 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 from models.site_requests import SiteCreateRequest, SiteType
 
 logger = logging.getLogger(__name__)
+
+# Characters that could allow NGINX directive injection
+_NGINX_DANGEROUS_PATTERN = re.compile(r'[{};\\`$\n\r\x00]')
+
+
+def sanitize_nginx_value(value: str, field_name: str = "value") -> str:
+    """
+    Reject user-supplied values that contain NGINX control characters.
+
+    Prevents directive injection by disallowing characters that have
+    special meaning in NGINX config syntax: semicolons, braces,
+    backslashes, backticks, dollar signs, and newlines.
+
+    Args:
+        value: The user-supplied string to check.
+        field_name: Name of the field for error messages.
+
+    Returns:
+        The original value if safe.
+
+    Raises:
+        ConfigGeneratorError: If dangerous characters are found.
+    """
+    match = _NGINX_DANGEROUS_PATTERN.search(value)
+    if match:
+        char = match.group()
+        readable = repr(char)
+        raise ConfigGeneratorError(
+            f"Invalid character {readable} in {field_name}. "
+            f"Characters {{ }} ; \\ ` $ and newlines are not allowed.",
+            site_name=None,
+        )
+    return value
 
 # Default template directory
 DEFAULT_TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -106,11 +140,18 @@ class ConfigGenerator:
                 site_name=request.name
             )
 
+        # Sanitize user-supplied values before template rendering
+        server_names_str = " ".join(request.server_names)
+        sanitize_nginx_value(server_names_str, "server_names")
+        sanitize_nginx_value(request.root_path, "root_path")
+        index_files_str = " ".join(request.index_files)
+        sanitize_nginx_value(index_files_str, "index_files")
+
         config = template.render(
             listen_port=request.listen_port,
-            server_names=" ".join(request.server_names),
+            server_names=server_names_str,
             root_path=request.root_path,
-            index_files=" ".join(request.index_files)
+            index_files=index_files_str
         )
 
         logger.debug(f"Generated static site config for {request.name}")
@@ -134,9 +175,14 @@ class ConfigGenerator:
                 site_name=request.name
             )
 
+        # Sanitize user-supplied values before template rendering
+        server_names_str = " ".join(request.server_names)
+        sanitize_nginx_value(server_names_str, "server_names")
+        sanitize_nginx_value(request.proxy_pass, "proxy_pass")
+
         config = template.render(
             listen_port=request.listen_port,
-            server_names=" ".join(request.server_names),
+            server_names=server_names_str,
             proxy_pass=request.proxy_pass
         )
 
@@ -157,6 +203,11 @@ class ConfigGenerator:
             template = self.env.get_template("ssl_static_site.conf.j2")
         except TemplateNotFound:
             raise TemplateNotFoundError("SSL static site template not found")
+
+        # Sanitize user-supplied values before template rendering
+        sanitize_nginx_value(server_names, "server_names")
+        sanitize_nginx_value(root_path, "root_path")
+        sanitize_nginx_value(index_files, "index_files")
 
         config = template.render(
             server_names=server_names,
@@ -182,6 +233,10 @@ class ConfigGenerator:
             template = self.env.get_template("ssl_reverse_proxy.conf.j2")
         except TemplateNotFound:
             raise TemplateNotFoundError("SSL reverse proxy template not found")
+
+        # Sanitize user-supplied values before template rendering
+        sanitize_nginx_value(server_names, "server_names")
+        sanitize_nginx_value(proxy_pass, "proxy_pass")
 
         config = template.render(
             server_names=server_names,
