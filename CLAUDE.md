@@ -26,12 +26,21 @@ curl http://localhost:8000/health    # Check API health
 - ReDoc: http://localhost:8000/redoc
 - OpenAPI schema: http://localhost:8000/openapi.json
 
-### Testing
+### Testing & CI
 ```bash
-pytest                              # Run all tests
-pytest tests/unit/ -v               # Run unit tests with verbose output
-docker run --rm -v "$(pwd)/tests:/app/tests" -v "$(pwd)/api:/app/api" \
-  -w /app compose-nginx-manager-api pytest tests/  # Run in Docker
+make ci                             # Run full CI check (lint + test with coverage)
+make lint                           # Ruff check + format verification
+make format                         # Auto-fix lint issues and format code
+make test                           # Run unit tests with verbose output
+make test-cov                       # Run tests with coverage report (45% threshold)
+pytest tests/unit/ -v               # Run unit tests directly
+```
+
+### Linting
+```bash
+uv run ruff check api/ tests/       # Check lint rules
+uv run ruff check --fix api/ tests/  # Auto-fix lint issues
+uv run ruff format api/ tests/       # Format code
 ```
 
 ## Architecture
@@ -387,7 +396,19 @@ curl -X POST http://localhost:8000/auth/login \
   -d '{"username":"admin","password":"SecurePass123!"}'
 ```
 
+## CI/CD Pipeline (Phase 6.1)
+
+- **GitHub Actions CI** (`.github/workflows/ci.yml`): lint → test (with coverage) → Docker build on push/PR to main
+- **GitHub Actions Release** (`.github/workflows/release.yml`): builds and pushes Docker images to ghcr.io on `v*` tags
+- **Dependabot** (`.github/dependabot.yml`): pip (weekly), GitHub Actions (weekly), Docker (monthly)
+- **Pre-commit hooks** (`.pre-commit-config.yaml`): ruff check+fix, ruff format, trailing whitespace, end-of-file, YAML, large files
+- **Makefile**: `make lint`, `make format`, `make test`, `make test-cov`, `make ci`, `make dev`, `make down`
+- **Ruff config**: in `pyproject.toml` — target Python 3.12, line-length 120, select rules (E, W, F, I, N, UP, B, SIM, RUF)
+- **Test conftest** (`tests/conftest.py`): disables `AUTH_ENABLED` for unit tests so they don't require auth credentials
+- **Coverage threshold**: 45% minimum (`--cov-fail-under=45`), current baseline ~52%
+
 ## Current Limitations
 
-- No web dashboard (Phase 6, API only)
-- 2FA not yet available (Phase 5.2b)
+- No web dashboard (Phase 7, API only)
+- 2FA not yet available (Phase 6.3)
+- No mypy type checking (deferred — insufficient type annotations across codebase)
