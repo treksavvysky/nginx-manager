@@ -39,6 +39,9 @@ class OperationType(str, Enum):
     SSL_RENEW = "ssl_renew"
     SSL_REMOVE = "ssl_remove"
 
+    # Workflows (Phase 4)
+    WORKFLOW_EXECUTE = "workflow_execute"
+
     # Rollback
     ROLLBACK = "rollback"
 

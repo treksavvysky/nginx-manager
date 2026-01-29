@@ -494,6 +494,107 @@ def create_mcp_server(name: str = "nginx-manager") -> Optional[Any]:
         return json.dumps(result, indent=2, default=str)
 
     # ==========================================================================
+    # Register Tools - Agent Workflows (Phase 4)
+    # ==========================================================================
+
+    @mcp.tool()
+    async def setup_site_workflow(
+        name: str,
+        server_names: list[str],
+        site_type: str,
+        listen_port: int = 80,
+        root_path: str = None,
+        proxy_pass: str = None,
+        request_ssl: bool = False,
+        ssl_alt_names: list[str] = None,
+        auto_renew: bool = True,
+        dry_run: bool = False
+    ) -> str:
+        """
+        Complete site setup workflow with optional SSL.
+
+        Creates a site, optionally requests an SSL certificate, and verifies
+        the configuration. Automatically rolls back all changes on failure.
+
+        Steps:
+        1. Check prerequisites (NGINX running, name available)
+        2. Create site configuration
+        3. Verify NGINX config
+        4-6. (If request_ssl) Diagnose SSL, request cert, verify SSL
+
+        Args:
+            name: Site name/identifier
+            server_names: Domain names for this site
+            site_type: 'static' or 'reverse_proxy'
+            listen_port: Port to listen on (default: 80)
+            root_path: Document root for static sites
+            proxy_pass: Backend URL for reverse proxy sites
+            request_ssl: Request Let's Encrypt certificate (default: False)
+            ssl_alt_names: Additional SSL domain names
+            auto_renew: Enable certificate auto-renewal (default: True)
+            dry_run: Preview workflow without executing (default: False)
+
+        Returns:
+            Workflow result with step details and transaction IDs
+        """
+        from mcp_server.tools import execute_setup_site_workflow
+        result = await execute_setup_site_workflow(
+            name=name,
+            server_names=server_names,
+            site_type=site_type,
+            listen_port=listen_port,
+            root_path=root_path,
+            proxy_pass=proxy_pass,
+            request_ssl=request_ssl,
+            ssl_alt_names=ssl_alt_names,
+            auto_renew=auto_renew,
+            dry_run=dry_run
+        )
+        return json.dumps(result, indent=2, default=str)
+
+    @mcp.tool()
+    async def migrate_site_workflow(
+        name: str,
+        server_names: list[str] = None,
+        listen_port: int = None,
+        root_path: str = None,
+        proxy_pass: str = None,
+        dry_run: bool = False
+    ) -> str:
+        """
+        Safely migrate/update a site with automatic rollback.
+
+        Updates a site configuration with backup, validation, and
+        automatic rollback if the new configuration is invalid.
+
+        Steps:
+        1. Verify site exists
+        2. Update configuration (with snapshot)
+        3. Validate NGINX config (rollback on failure)
+
+        Args:
+            name: Site name to update
+            server_names: Updated domain names
+            listen_port: Updated listen port
+            root_path: Updated document root
+            proxy_pass: Updated backend URL
+            dry_run: Preview workflow without executing (default: False)
+
+        Returns:
+            Workflow result with step details and transaction IDs
+        """
+        from mcp_server.tools import execute_migrate_site_workflow
+        result = await execute_migrate_site_workflow(
+            name=name,
+            server_names=server_names,
+            listen_port=listen_port,
+            root_path=root_path,
+            proxy_pass=proxy_pass,
+            dry_run=dry_run
+        )
+        return json.dumps(result, indent=2, default=str)
+
+    # ==========================================================================
     # Register Prompts
     # ==========================================================================
 

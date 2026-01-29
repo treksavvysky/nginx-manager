@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa, ec
 from cryptography.x509.oid import NameOID, ExtensionOID
 import josepy as jose
 
-from acme import challenges, client, messages
+from acme import challenges, client, errors as acme_errors, messages
 from acme.client import ClientV2
 
 from config import settings
@@ -143,8 +143,6 @@ class ACMEService:
         email_to_use = email or settings.acme_account_email or None
 
         def do_registration():
-            # Build registration with only_return_existing=False for new account
-            # or only_return_existing=True to get existing account
             regr = messages.NewRegistration.from_data(
                 terms_of_service_agreed=True
             )
@@ -152,24 +150,17 @@ class ACMEService:
                 regr = regr.update(contact=(f"mailto:{email_to_use}",))
 
             try:
-                # Try to create new account
                 account_resource = acme_client.new_account(regr)
                 logger.info("Created new ACME account")
                 return account_resource
-            except Exception as e:
-                error_str = str(e)
-                if "accountDoesNotExist" in error_str:
-                    # Account key not registered, re-raise
-                    raise
-                elif "account already exists" in error_str.lower() or "conflict" in error_str.lower():
-                    # Account already exists with this key, get it
-                    logger.info("ACME account already exists, retrieving")
-                    regr_existing = messages.NewRegistration.from_data(
-                        only_return_existing=True
-                    )
-                    return acme_client.new_account(regr_existing)
-                else:
-                    raise
+            except acme_errors.ConflictError as conflict:
+                # Account already exists — use the location URL to query it
+                logger.info(f"ACME account already exists at {conflict.location}, retrieving")
+                existing_regr = messages.RegistrationResource(
+                    uri=conflict.location,
+                    body=messages.Registration()
+                )
+                return acme_client.query_registration(existing_regr)
 
         account_resource = await asyncio.to_thread(do_registration)
 

@@ -685,19 +685,23 @@ class CertManager:
             return cert
 
         except Exception as e:
+            # Log the full traceback for debugging
+            logger.error(f"Certificate request failed for {domain}: {type(e).__name__}: {e}", exc_info=True)
+
             # Reset ACME client to prevent stale state on next request
             self.acme.reset()
 
             # Update certificate status to failed
             cert.status = CertificateStatus.FAILED
-            cert.last_renewal_error = str(e)
+            cert.last_renewal_error = str(e) or type(e).__name__
             await self.db.update(
                 "certificates",
                 cert.id,
                 await self._certificate_to_db(cert)
             )
+            error_detail = str(e) or repr(e)
             raise CertificateError(
-                f"Failed to obtain certificate: {e}",
+                f"Failed to obtain certificate: {error_detail}",
                 domain=domain,
                 suggestion="Check domain accessibility and DNS configuration"
             )

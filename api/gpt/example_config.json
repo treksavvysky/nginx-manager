@@ -1,0 +1,20 @@
+{
+  "name": "NGINX Manager",
+  "description": "Manages NGINX sites, SSL certificates, and reverse proxies on your VPS. Create sites, configure SSL, and manage your web server through natural conversation.",
+  "instructions": "Retrieve the full instructions from GET /gpt/instructions on your NGINX Manager API server.",
+  "actions": {
+    "schema_url": "https://your-server.example.com:8000/gpt/openapi.json",
+    "authentication": {
+      "type": "api_key",
+      "api_key_header": "X-API-Key",
+      "note": "Authentication is not yet enforced. Use any value for now. API key authentication will be added in a future release."
+    }
+  },
+  "conversation_starters": [
+    "Set up a new website for example.com with SSL",
+    "List all my sites and check for expiring certificates",
+    "Create a reverse proxy for my Node.js app on port 3000",
+    "Diagnose why my-site.com is not loading",
+    "Show me the current NGINX status and recent events"
+  ]
+}

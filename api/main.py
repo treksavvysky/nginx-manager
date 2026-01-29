@@ -16,7 +16,7 @@ import uvicorn
 import logging
 from datetime import datetime
 
-from endpoints import sites, nginx, events, transactions, certificates
+from endpoints import sites, nginx, events, transactions, certificates, workflows, gpt
 from config import settings, ensure_directories
 
 # Configure logging
@@ -105,6 +105,8 @@ app.include_router(nginx.router)
 app.include_router(events.router)
 app.include_router(transactions.router)
 app.include_router(certificates.router)
+app.include_router(workflows.router)
+app.include_router(gpt.router)
 
 # CORS middleware for web interface compatibility
 app.add_middleware(

@@ -169,30 +169,32 @@ SSL certificate management and MCP server are fully implemented.
 
 ## Phase 4: GPT Integration + Agent Workflows
 
-**Status: Planned**
+**Status: Complete**
 
 Complete AI agent integration with support for complex multi-step operations.
 
 ### 4.1 OpenAI Custom GPT
-- [ ] Actions schema from OpenAPI spec
-- [ ] Optimized response formats for GPT consumption
-- [ ] Authentication flow for Custom GPTs
-- [ ] GPT-specific prompt templates
-- [ ] Example GPT configuration and instructions
+- [x] Actions schema from OpenAPI spec
+- [x] Optimized response formats for GPT consumption
+- [x] Authentication flow for Custom GPTs (API Key placeholder for Phase 5)
+- [x] GPT-specific prompt templates
+- [x] Example GPT configuration and instructions
 
 ### 4.2 Agent Workflows (Compound Operations)
-- [ ] `POST /workflows/setup-site` - Create site + request cert + enable + reload
-- [ ] `POST /workflows/migrate-site` - Backup + update + test + rollback on failure
-- [ ] Checkpoint-based execution with rollback points
-- [ ] Progress streaming for long operations
-- [ ] Workflow templates for common patterns
+- [x] `POST /workflows/setup-site` - Create site + request cert + enable + reload
+- [x] `POST /workflows/migrate-site` - Backup + update + test + rollback on failure
+- [x] Checkpoint-based execution with rollback points
+- [x] Progress streaming for long operations (SSE)
+- [x] Workflow templates for common patterns
 
 ### 4.3 Testing & Documentation
-- [ ] Agent integration tutorials (MCP and GPT)
-- [ ] Example conversations/workflows
-- [ ] Error handling patterns for AI agents
-- [ ] Best practices guide for AI integration
-- [ ] Testing harness for agent interactions
+- [x] Agent integration tutorials (MCP and GPT)
+- [x] Example conversations/workflows
+- [x] Error handling patterns for AI agents
+- [x] Best practices guide for AI integration
+- [x] Testing harness for agent interactions
+
+**Implementation**: Workflow engine in `api/core/workflow_engine.py`, GPT schema at `GET /gpt/openapi.json`. See `docs/GPT_INTEGRATION.md` and `docs/AGENT_WORKFLOWS.md`.
 
 ---
 
@@ -289,7 +291,10 @@ Dashboard is lowest priority for an AI-first tool—but valuable for monitoring 
 - [x] Certificate model tests (28 tests)
 - [x] Certificate context helper tests (15 tests)
 - [x] Certificate manager tests (15 tests)
-- [x] Total: 177 unit tests
+- [x] Workflow engine tests (26 tests)
+- [x] Workflow model tests (29 tests)
+- [x] GPT schema generation tests (17 tests)
+- [x] Total: 249 unit tests
 
 ### Integration Tests
 - [x] API endpoint tests with actual NGINX container

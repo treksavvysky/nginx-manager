@@ -129,6 +129,18 @@ class Settings(BaseSettings):
         description="Maximum number of snapshots to retain"
     )
 
+    # Workflow Configuration (Phase 4)
+    workflow_step_timeout: int = Field(
+        default=120,
+        alias="WORKFLOW_STEP_TIMEOUT",
+        description="Timeout in seconds for individual workflow steps"
+    )
+    workflow_auto_rollback: bool = Field(
+        default=True,
+        alias="WORKFLOW_AUTO_ROLLBACK",
+        description="Automatically rollback checkpoint steps on workflow failure"
+    )
+
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     

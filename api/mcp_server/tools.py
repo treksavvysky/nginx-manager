@@ -1302,3 +1302,109 @@ async def rollback_transaction(
             "message": f"Failed to rollback: {str(e)}",
             "original_transaction_id": transaction_id
         }
+
+
+# =============================================================================
+# Workflow Tools (Phase 4)
+# =============================================================================
+
+async def execute_setup_site_workflow(
+    name: str,
+    server_names: List[str],
+    site_type: str,
+    listen_port: int = 80,
+    root_path: Optional[str] = None,
+    proxy_pass: Optional[str] = None,
+    request_ssl: bool = False,
+    ssl_alt_names: Optional[List[str]] = None,
+    auto_renew: bool = True,
+    dry_run: bool = False
+) -> dict:
+    """
+    Execute the setup-site workflow.
+
+    Creates a site, optionally requests an SSL certificate, and verifies
+    the configuration. Automatically rolls back on failure.
+
+    Args:
+        name: Site name/identifier
+        server_names: Domain names for this site
+        site_type: 'static' or 'reverse_proxy'
+        listen_port: Port to listen on (default: 80)
+        root_path: Document root for static sites
+        proxy_pass: Backend URL for reverse proxy sites
+        request_ssl: Request Let's Encrypt certificate (default: False)
+        ssl_alt_names: Additional SSL domain names
+        auto_renew: Enable certificate auto-renewal (default: True)
+        dry_run: Preview workflow without executing (default: False)
+
+    Returns:
+        dict: Workflow result with step details and transaction IDs
+    """
+    from core.workflow_definitions import build_setup_site_workflow
+    from endpoints.workflows import _dry_run_setup_site
+
+    context = {
+        "name": name,
+        "server_names": server_names,
+        "site_type": site_type,
+        "listen_port": listen_port,
+        "root_path": root_path,
+        "proxy_pass": proxy_pass,
+        "request_ssl": request_ssl,
+        "ssl_alt_names": ssl_alt_names,
+        "auto_renew": auto_renew,
+    }
+
+    if dry_run:
+        result = _dry_run_setup_site(context)
+        return result.model_dump()
+
+    engine = build_setup_site_workflow(context)
+    result = await engine.execute(context)
+    return result.model_dump()
+
+
+async def execute_migrate_site_workflow(
+    name: str,
+    server_names: Optional[List[str]] = None,
+    listen_port: Optional[int] = None,
+    root_path: Optional[str] = None,
+    proxy_pass: Optional[str] = None,
+    dry_run: bool = False
+) -> dict:
+    """
+    Execute the migrate-site workflow.
+
+    Safely updates a site configuration with automatic backup,
+    validation, and rollback on failure.
+
+    Args:
+        name: Site name to migrate
+        server_names: Updated domain names
+        listen_port: Updated listen port
+        root_path: Updated document root
+        proxy_pass: Updated backend URL
+        dry_run: Preview workflow without executing (default: False)
+
+    Returns:
+        dict: Workflow result with step details and transaction IDs
+    """
+    from core.workflow_definitions import build_migrate_site_workflow
+    from endpoints.workflows import _dry_run_migrate_site
+
+    context = {
+        "name": name,
+        "server_names": server_names,
+        "listen_port": listen_port,
+        "root_path": root_path,
+        "proxy_pass": proxy_pass,
+    }
+
+    if dry_run:
+        result = _dry_run_migrate_site(context)
+        return result.model_dump()
+
+    engine = build_migrate_site_workflow(context)
+    result = await engine.execute(context)
+    return result.model_dump()
