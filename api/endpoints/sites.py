@@ -136,12 +136,22 @@ async def list_sites() -> List[SiteConfigResponse]:
                     sites.append(site_response)
                 else:
                     logger.warning(f"Failed to parse config file: {conf_file}")
-            
+
             except Exception as e:
                 logger.error(f"Error processing {conf_file}: {e}")
                 # Continue processing other files instead of failing completely
                 continue
-        
+
+        # Enrich with certificate data
+        try:
+            from core.cert_helpers import get_certificate_map, match_certificate
+            cert_map = await get_certificate_map()
+            for site in sites:
+                if site.server_names:
+                    site.certificate = match_certificate(site.server_names, cert_map)
+        except Exception as e:
+            logger.warning(f"Failed to load certificate data for sites: {e}")
+
         logger.info(f"Successfully parsed {len(sites)} site configurations")
         return sites
         
@@ -248,7 +258,16 @@ async def get_site(site_name: str) -> SiteConfigResponse:
         # Convert to response model via adapter
         rich_dict = ConfigAdapter.to_rich_dict(parsed_config)
         site_response = SiteConfigResponse(**rich_dict)
-        
+
+        # Enrich with certificate data
+        try:
+            from core.cert_helpers import get_certificate_map, match_certificate
+            cert_map = await get_certificate_map()
+            if site_response.server_names:
+                site_response.certificate = match_certificate(site_response.server_names, cert_map)
+        except Exception as e:
+            logger.warning(f"Failed to load certificate data for site {site_name}: {e}")
+
         logger.info(f"Successfully retrieved configuration for site: {site_name}")
         return site_response
         

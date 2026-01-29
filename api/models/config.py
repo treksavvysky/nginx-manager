@@ -117,6 +117,9 @@ class SiteConfigResponse(BaseModel):
     parse_errors: Optional[List[Dict[str, Any]]] = Field(
         None, description="Parse errors with line numbers"
     )
+    certificate: Optional[Dict[str, Any]] = Field(
+        None, description="SSL certificate details if a matching certificate exists"
+    )
 
 
 class ConfigValidationResult(BaseModel):

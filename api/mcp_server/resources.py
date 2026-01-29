@@ -60,7 +60,8 @@ async def get_sites_resource() -> dict:
                     "proxy_pass": rich_dict.get("proxy_pass"),
                     "root_path": rich_dict.get("root_path"),
                     "enabled": rich_dict.get("enabled", True),
-                    "status": rich_dict.get("status", "unknown")
+                    "status": rich_dict.get("status", "unknown"),
+                    "certificate": None
                 }
 
                 if site_data["ssl_enabled"]:
@@ -71,12 +72,26 @@ async def get_sites_resource() -> dict:
             logger.warning(f"Failed to parse {conf_file}: {e}")
             continue
 
+    # Enrich with certificate data
+    cert_count = 0
+    try:
+        from core.cert_helpers import get_certificate_map, match_certificate
+        cert_map = await get_certificate_map()
+        for site_data in sites:
+            cert = match_certificate(site_data.get("server_names", []), cert_map)
+            if cert:
+                site_data["certificate"] = cert
+                cert_count += 1
+    except Exception as e:
+        logger.warning(f"Failed to load certificate data for sites: {e}")
+
     return {
         "sites": sites,
         "total": len(sites),
         "enabled_count": len([s for s in sites if s["enabled"]]),
         "disabled_count": len([s for s in sites if not s["enabled"]]),
-        "ssl_enabled_count": ssl_enabled_count
+        "ssl_enabled_count": ssl_enabled_count,
+        "certificate_count": cert_count
     }
 
 
@@ -131,12 +146,30 @@ async def get_site_resource(name: str) -> dict:
         rich_dict = ConfigAdapter.to_rich_dict(parsed_config)
         rich_dict["enabled"] = enabled
 
+        # Enrich with certificate data
+        rich_dict["certificate"] = None
+        try:
+            from core.cert_helpers import get_certificate_map, match_certificate
+            cert_map = await get_certificate_map()
+            server_names = rich_dict.get("server_names", [])
+            cert = match_certificate(server_names, cert_map)
+            if cert:
+                rich_dict["certificate"] = cert
+        except Exception as e:
+            logger.warning(f"Failed to load certificate data for site {name}: {e}")
+
         # Add suggestions based on current state
         suggestions = []
         if not rich_dict.get("ssl_enabled"):
             suggestions.append(f"Add SSL with: request_certificate(domain='{name}')")
         if not enabled:
             suggestions.append(f"Enable this site with: enable_site(name='{name}')")
+
+        cert_info = rich_dict.get("certificate")
+        if cert_info:
+            days = cert_info.get("days_until_expiry")
+            if days is not None and days <= 30:
+                suggestions.append(f"Certificate expires in {days} days — renew with: renew_certificate(domain='{name}')")
 
         rich_dict["suggestions"] = suggestions
         return rich_dict

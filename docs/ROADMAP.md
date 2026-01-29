@@ -111,22 +111,22 @@ This phase establishes the foundation for reliable AI agent interaction. The par
 - [x] Automatic rollback if reload fails health check
 
 ### 2.7 MCP Interface Design (Design Only)
-- [ ] Define MCP resources schema (site configs, system health)
-- [ ] Define MCP tools schema (all CRUD operations)
-- [ ] Define MCP prompts ("Setup new site", "Diagnose issue")
-- [ ] Document API-to-MCP mapping for each endpoint
-- [ ] Design response formats optimized for Claude consumption
-- [ ] Create MCP design document
+- [x] Define MCP resources schema (site configs, system health)
+- [x] Define MCP tools schema (all CRUD operations)
+- [x] Define MCP prompts ("Setup new site", "Diagnose issue")
+- [x] Document API-to-MCP mapping for each endpoint
+- [x] Design response formats optimized for Claude consumption
+- [x] Create MCP design document
 
-**Note**: This is design only—implementation happens in Phase 3. The goal is to let MCP requirements influence API design decisions in 2.3-2.6.
+**Note**: Design document created at `docs/MCP_DESIGN.md`. Implementation completed in Phase 3.5.
 
 ---
 
 ## Phase 3: SSL + MCP Implementation
 
-**Status: SSL Complete, MCP Pending**
+**Status: Complete**
 
-SSL certificate management is fully implemented and tested with production Let's Encrypt. MCP server implementation is next.
+SSL certificate management and MCP server are fully implemented.
 
 ### 3.1 SSL Certificate Management
 - [x] `POST /certificates/` - Request new certificate (Let's Encrypt)
@@ -143,7 +143,7 @@ SSL certificate management is fully implemented and tested with production Let's
 - [x] Automatic NGINX reload after renewal
 
 ### 3.3 Rich SSL Context
-- [ ] Certificate status included in site responses
+- [x] Certificate status included in site responses
 - [x] DNS verification helpers ("your domain doesn't resolve to this server")
 - [x] Suggested actions for SSL issues
 - [x] `GET /certificates/{domain}/check` - Full SSL diagnostic
@@ -156,12 +156,14 @@ SSL certificate management is fully implemented and tested with production Let's
 - [x] Expiry tracking for custom certs
 
 ### 3.5 MCP Server Implementation
-- [ ] MCP protocol implementation based on Phase 2 design
-- [ ] **Resources**: Site configs, certificate status, system health, event log
-- [ ] **Tools**: All CRUD operations, SSL management, NGINX control
-- [ ] **Prompts**: "Setup new site", "Add SSL to site", "Check expiring certs", "Diagnose connectivity"
-- [ ] MCP-optimized response formats
-- [ ] MCP server deployment documentation
+- [x] MCP protocol implementation based on Phase 2 design
+- [x] **Resources**: Site configs, certificate status, system health, event log
+- [x] **Tools**: All CRUD operations, SSL management, NGINX control
+- [x] **Prompts**: "Setup new site", "Add SSL to site", "Check expiring certs", "Diagnose connectivity"
+- [x] MCP-optimized response formats
+- [x] MCP server deployment documentation
+
+**Implementation**: MCP server located in `api/mcp/`. See `docs/MCP_DEPLOYMENT.md` for usage.
 
 ---
 
