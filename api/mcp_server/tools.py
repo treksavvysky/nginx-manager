@@ -882,29 +882,37 @@ async def request_certificate(
                 "suggestions": result.suggestions if hasattr(result, "suggestions") else [],
             }
 
-        result = await cert_manager.request_certificate(
+        cert = await cert_manager.request_certificate(
             domain=domain, alt_names=alt_names or [], auto_renew=auto_renew, dry_run=False
         )
 
-        cert_data = None
-        if result.certificate:
-            cert_data = {
-                "domain": result.certificate.domain,
-                "status": result.certificate.status.value if result.certificate.status else None,
-                "not_after": result.certificate.not_after.isoformat() if result.certificate.not_after else None,
-                "days_until_expiry": result.certificate.days_until_expiry,
-            }
+        cert_data = {
+            "domain": cert.domain,
+            "status": cert.status.value if cert.status else None,
+            "not_after": cert.not_after.isoformat() if cert.not_after else None,
+            "days_until_expiry": cert.days_until_expiry,
+        }
+
+        # Reload NGINX if requested
+        reloaded = False
+        if auto_reload:
+            try:
+                from core.docker_service import docker_service
+
+                await docker_service.reload_nginx()
+                reloaded = True
+            except Exception as e:
+                logger.warning(f"Failed to reload NGINX after certificate request: {e}")
 
         return {
-            "success": result.success,
-            "message": result.message,
-            "domain": result.domain,
-            "transaction_id": result.transaction_id,
+            "success": True,
+            "message": f"SSL certificate issued for {domain}",
+            "domain": cert.domain,
             "certificate": cert_data,
-            "reload_required": result.reload_required,
-            "reloaded": result.reloaded,
-            "suggestions": result.suggestions,
-            "warnings": result.warnings,
+            "reload_required": True,
+            "reloaded": reloaded,
+            "suggestions": [f"Verify HTTPS is working: curl -I https://{domain}"],
+            "warnings": [],
         }
 
     except CertificateError as e:
@@ -941,11 +949,10 @@ async def upload_certificate(
     try:
         cert_manager = get_cert_manager()
 
-        result = await cert_manager.upload_custom_certificate(
-            domain=domain, cert_pem=certificate_pem, key_pem=private_key_pem, chain_pem=chain_pem, dry_run=dry_run
-        )
-
         if dry_run:
+            result = await cert_manager.upload_custom_certificate(
+                domain=domain, cert_pem=certificate_pem, key_pem=private_key_pem, chain_pem=chain_pem, dry_run=True
+            )
             return {
                 "dry_run": True,
                 "would_succeed": result.would_succeed,
@@ -955,23 +962,35 @@ async def upload_certificate(
                 "warnings": result.warnings if hasattr(result, "warnings") else [],
             }
 
-        cert_data = None
-        if result.certificate:
-            cert_data = {
-                "domain": result.certificate.domain,
-                "status": result.certificate.status.value if result.certificate.status else None,
-                "not_after": result.certificate.not_after.isoformat() if result.certificate.not_after else None,
-                "days_until_expiry": result.certificate.days_until_expiry,
-            }
+        cert = await cert_manager.upload_custom_certificate(
+            domain=domain, cert_pem=certificate_pem, key_pem=private_key_pem, chain_pem=chain_pem, dry_run=False
+        )
+
+        cert_data = {
+            "domain": cert.domain,
+            "status": cert.status.value if cert.status else None,
+            "not_after": cert.not_after.isoformat() if cert.not_after else None,
+            "days_until_expiry": cert.days_until_expiry,
+        }
+
+        # Reload NGINX if requested
+        reloaded = False
+        if auto_reload:
+            try:
+                from core.docker_service import docker_service
+
+                await docker_service.reload_nginx()
+                reloaded = True
+            except Exception as e:
+                logger.warning(f"Failed to reload NGINX after certificate upload: {e}")
 
         return {
-            "success": result.success,
-            "message": result.message,
-            "domain": result.domain,
-            "transaction_id": result.transaction_id,
+            "success": True,
+            "message": f"Custom certificate uploaded for {domain}",
+            "domain": cert.domain,
             "certificate": cert_data,
-            "suggestions": result.suggestions,
-            "warnings": result.warnings,
+            "suggestions": [f"Verify HTTPS is working: curl -I https://{domain}"],
+            "warnings": [],
         }
 
     except CertificateError as e:
@@ -1011,23 +1030,31 @@ async def renew_certificate(domain: str, force: bool = False, auto_reload: bool 
                 "warnings": result.warnings if hasattr(result, "warnings") else [],
             }
 
-        cert_data = None
-        if result.certificate:
-            cert_data = {
-                "domain": result.certificate.domain,
-                "status": result.certificate.status.value if result.certificate.status else None,
-                "not_after": result.certificate.not_after.isoformat() if result.certificate.not_after else None,
-                "days_until_expiry": result.certificate.days_until_expiry,
-            }
+        cert_data = {
+            "domain": result.domain,
+            "status": result.status.value if result.status else None,
+            "not_after": result.not_after.isoformat() if result.not_after else None,
+            "days_until_expiry": result.days_until_expiry,
+        }
+
+        # Reload NGINX if requested
+        reloaded = False
+        if auto_reload:
+            try:
+                from core.docker_service import docker_service
+
+                await docker_service.reload_nginx()
+                reloaded = True
+            except Exception as e:
+                logger.warning(f"Failed to reload NGINX after certificate renewal: {e}")
 
         return {
-            "success": result.success,
-            "message": result.message,
+            "success": True,
+            "message": f"Certificate renewed for {domain}",
             "domain": result.domain,
-            "transaction_id": result.transaction_id,
             "certificate": cert_data,
-            "suggestions": result.suggestions,
-            "warnings": result.warnings,
+            "suggestions": [f"Verify HTTPS is working: curl -I https://{domain}"],
+            "warnings": [],
         }
 
     except CertificateError as e:
