@@ -1,0 +1,54 @@
+{% if users %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Role</th>
+        <th>Email</th>
+        <th>Status</th>
+        <th>2FA</th>
+        <th>Last Login</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in users %}
+      <tr>
+        <td><strong>{{ user.username }}</strong></td>
+        <td><span class="badge role-badge-{{ user.role }}">{{ user.role | upper }}</span></td>
+        <td>{{ user.email or '—' }}</td>
+        <td>
+          {% if user.is_locked %}
+          <span class="badge badge-danger">Locked</span>
+          {% elif not user.is_active %}
+          <span class="badge badge-disabled">Inactive</span>
+          {% else %}
+          <span class="badge badge-enabled">Active</span>
+          {% endif %}
+        </td>
+        <td>{{ 'Enabled' if user.totp_enabled else '—' }}</td>
+        <td>{{ user.last_login[:16] if user.last_login else '—' }}</td>
+        <td class="actions">
+          <a href="/dashboard/users/{{ user.id }}/edit" class="btn btn-sm">Edit</a>
+          {% if auth and auth.user_id != user.id %}
+          <button class="btn btn-sm btn-danger"
+                  hx-delete="/dashboard/users/{{ user.id }}"
+                  hx-target="#toast-container"
+                  hx-swap="beforeend"
+                  hx-confirm="Delete user '{{ user.username }}'? This cannot be undone.">
+            Delete
+          </button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <h2>No users</h2>
+  <p>No user accounts have been created yet.</p>
+</div>
+{% endif %}

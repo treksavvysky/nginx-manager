@@ -8,7 +8,7 @@ from datetime import datetime
 from fastapi import Request
 
 from config import get_nginx_conf_path, settings
-from models.auth import AuthContext
+from models.auth import AuthContext, Role
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,9 @@ async def base_context(request: Request, auth: AuthContext) -> dict:
         "current_path": request.url.path,
         "now": datetime.now(),
     }
+
+    # Admin check — used for nav visibility and admin page gating
+    ctx["is_admin"] = not settings.auth_enabled or (auth is not None and auth.role == Role.ADMIN)
 
     # Lightweight health summary for the status indicator
     ctx["health"] = await _get_health_summary()

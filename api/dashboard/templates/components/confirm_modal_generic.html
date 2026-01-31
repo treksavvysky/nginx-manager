@@ -1,0 +1,27 @@
+{#
+  Generic confirmation modal.
+
+  Parent element must have x-data with:
+    showConfirm: false,
+    confirmTitle: '',
+    confirmMessage: '',
+    confirmAction: '',
+    confirmMethod: 'POST',
+    confirmBtnText: 'Confirm',
+    confirmBtnClass: 'btn-danger'
+#}
+<template x-if="showConfirm">
+  <div class="modal-backdrop" @click.self="showConfirm = false" @keydown.escape.window="showConfirm = false">
+    <div class="modal">
+      <h3 x-text="confirmTitle || 'Confirm Action'"></h3>
+      <p x-text="confirmMessage || 'Are you sure?'"></p>
+      <div class="modal-actions">
+        <button class="btn" @click="showConfirm = false">Cancel</button>
+        <button :class="'btn ' + (confirmBtnClass || 'btn-danger')"
+                @click="htmx.ajax(confirmMethod || 'POST', confirmAction, {target: '#toast-container', swap: 'beforeend'}); showConfirm = false"
+                x-text="confirmBtnText || 'Confirm'">
+        </button>
+      </div>
+    </div>
+  </div>
+</template>

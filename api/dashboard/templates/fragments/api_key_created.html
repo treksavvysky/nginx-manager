@@ -1,0 +1,9 @@
+{% if result.success %}
+<div class="toast success">
+  <strong>API Key Created: {{ result.key_name }}</strong>
+  <p style="margin-top: 0.5rem; font-size: 0.85rem;">Copy this key now. It will not be shown again.</p>
+  <code class="key-display">{{ result.plaintext_key }}</code>
+</div>
+{% else %}
+<div class="toast error">{{ result.message }}</div>
+{% endif %}

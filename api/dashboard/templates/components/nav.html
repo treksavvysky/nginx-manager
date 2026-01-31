@@ -26,6 +26,21 @@
     Transactions
   </a>
 
+  <div class="nav-section">Operations</div>
+  <a href="/dashboard/workflows" {% if current_path == '/dashboard/workflows' %}class="active"{% endif %}>
+    Workflows
+  </a>
+
+  {% if is_admin %}
+  <div class="nav-section">Admin</div>
+  <a href="/dashboard/users" {% if '/dashboard/users' in current_path %}class="active"{% endif %}>
+    Users
+  </a>
+  <a href="/dashboard/api-keys" {% if current_path == '/dashboard/api-keys' %}class="active"{% endif %}>
+    API Keys
+  </a>
+  {% endif %}
+
   <div class="nav-section">System</div>
   <a href="/docs" target="_blank">API Docs</a>
 

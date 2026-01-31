@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Users — NGINX Manager{% endblock %}
+
+{% block content %}
+{% if access_error %}
+<div class="card">
+  <p style="color: var(--color-danger);">{{ access_error }}</p>
+</div>
+{% else %}
+<div class="page-header">
+  <h1>Users</h1>
+  {% if auth_enabled %}
+  <a href="/dashboard/users/new" class="btn btn-primary">New User</a>
+  {% endif %}
+</div>
+
+{% if not auth_enabled %}
+<div class="toast info" style="margin-bottom: 1rem;">
+  Authentication is disabled. Enable AUTH_ENABLED to manage users.
+</div>
+{% endif %}
+
+<div id="user-list">
+  {% include "fragments/user_table.html" %}
+</div>
+{% endif %}
+{% endblock %}

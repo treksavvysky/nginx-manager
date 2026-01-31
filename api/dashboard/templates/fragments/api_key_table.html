@@ -1,0 +1,54 @@
+{% if keys %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Role</th>
+        <th>Description</th>
+        <th>Created</th>
+        <th>Last Used</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for key in keys %}
+      <tr>
+        <td><strong>{{ key.name }}</strong></td>
+        <td><span class="badge role-badge-{{ key.role }}">{{ key.role | upper }}</span></td>
+        <td>{{ key.description or '—' }}</td>
+        <td>{{ key.created_at[:16] if key.created_at else '—' }}</td>
+        <td>{{ key.last_used[:16] if key.last_used else 'Never' }}</td>
+        <td>
+          {% if not key.is_active %}
+          <span class="badge badge-danger">Revoked</span>
+          {% elif key.is_expired %}
+          <span class="badge badge-warning">Expired</span>
+          {% else %}
+          <span class="badge badge-enabled">Active</span>
+          {% endif %}
+        </td>
+        <td class="actions">
+          {% if key.is_active and not key.is_expired %}
+          <button class="btn btn-sm btn-danger"
+                  hx-delete="/dashboard/api-keys/{{ key.id }}"
+                  hx-target="#toast-container"
+                  hx-swap="beforeend"
+                  hx-confirm="Revoke API key '{{ key.name }}'?"
+                  hx-on::after-request="if(event.detail.successful) htmx.ajax('GET', '/dashboard/api-keys', {target: '#key-list', swap: 'innerHTML'})">
+            Revoke
+          </button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <h2>No API keys</h2>
+  <p>No API keys have been created yet.</p>
+</div>
+{% endif %}

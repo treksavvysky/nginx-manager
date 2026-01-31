@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Workflows — NGINX Manager{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Workflows</h1>
+</div>
+
+<div x-data="{ activeTab: 'setup' }" hx-boost="false">
+
+  <div class="filter-bar" style="margin-bottom: 1.5rem;">
+    <button class="filter-chip" :class="{ active: activeTab === 'setup' }" @click="activeTab = 'setup'">Setup Site</button>
+    <button class="filter-chip" :class="{ active: activeTab === 'migrate' }" @click="activeTab = 'migrate'">Migrate Site</button>
+  </div>
+
+  {# ── Setup Site Workflow ── #}
+  <div x-show="activeTab === 'setup'" x-cloak>
+    <div class="card">
+      <div class="card-header"><h2>Setup New Site</h2></div>
+      <p style="color: var(--color-text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">
+        Create a site with optional SSL certificate in one operation. Steps are automatically rolled back on failure.
+      </p>
+      <form id="setup-site-form" x-data="{ siteType: 'static' }">
+        <input type="hidden" name="workflow_type" value="setup-site">
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="setup-name">Site Name</label>
+            <input type="text" id="setup-name" name="name" required placeholder="example.com" pattern="[a-zA-Z0-9._-]+">
+          </div>
+          <div class="form-group">
+            <label for="setup-server-names">Server Names</label>
+            <input type="text" id="setup-server-names" name="server_names" placeholder="example.com, www.example.com">
+            <div class="hint">Comma-separated. Defaults to site name if empty.</div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="setup-type">Site Type</label>
+            <select id="setup-type" name="site_type" x-model="siteType">
+              <option value="static">Static Site</option>
+              <option value="reverse_proxy">Reverse Proxy</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="setup-port">Listen Port</label>
+            <input type="number" id="setup-port" name="listen_port" value="80" min="1" max="65535">
+          </div>
+        </div>
+
+        <div class="form-group" x-show="siteType === 'static'">
+          <label for="setup-root">Root Path</label>
+          <input type="text" id="setup-root" name="root_path" placeholder="/var/www/example">
+        </div>
+        <div class="form-group" x-show="siteType === 'reverse_proxy'">
+          <label for="setup-proxy">Proxy Pass</label>
+          <input type="text" id="setup-proxy" name="proxy_pass" placeholder="http://localhost:3000">
+        </div>
+
+        <div class="form-group">
+          <div class="checkbox-group">
+            <input type="checkbox" id="setup-ssl" name="request_ssl">
+            <label for="setup-ssl" style="margin-bottom: 0;">Request SSL Certificate (Let's Encrypt)</label>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-primary"
+                  onclick="startWorkflow('setup-site-form', 'setup-progress', 'setup-result')">
+            Run Workflow
+          </button>
+        </div>
+      </form>
+      <div id="setup-progress" style="display: none; margin-top: 1rem;"></div>
+      <div id="setup-result" style="margin-top: 1rem;"></div>
+    </div>
+  </div>
+
+  {# ── Migrate Site Workflow ── #}
+  <div x-show="activeTab === 'migrate'" x-cloak>
+    <div class="card">
+      <div class="card-header"><h2>Migrate Existing Site</h2></div>
+      <p style="color: var(--color-text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">
+        Safely update a site configuration with automatic rollback if validation fails.
+      </p>
+      <form id="migrate-site-form">
+        <input type="hidden" name="workflow_type" value="migrate-site">
+
+        <div class="form-group">
+          <label for="migrate-name">Site</label>
+          <select id="migrate-name" name="name" required>
+            <option value="">Select a site...</option>
+            {% for site in sites %}
+            <option value="{{ site.name }}">{{ site.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="migrate-server-names">New Server Names</label>
+          <input type="text" id="migrate-server-names" name="server_names" placeholder="Leave empty to keep current">
+          <div class="hint">Comma-separated. Leave empty to keep current value.</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="migrate-proxy">New Proxy Pass</label>
+            <input type="text" id="migrate-proxy" name="proxy_pass" placeholder="http://localhost:4000">
+          </div>
+          <div class="form-group">
+            <label for="migrate-root">New Root Path</label>
+            <input type="text" id="migrate-root" name="root_path" placeholder="/var/www/new-root">
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-primary"
+                  onclick="startWorkflow('migrate-site-form', 'migrate-progress', 'migrate-result')">
+            Run Workflow
+          </button>
+        </div>
+      </form>
+      <div id="migrate-progress" style="display: none; margin-top: 1rem;"></div>
+      <div id="migrate-result" style="margin-top: 1rem;"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/dashboard/static/js/workflow-sse.js"></script>
+{% endblock %}

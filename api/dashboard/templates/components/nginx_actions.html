@@ -1,0 +1,41 @@
+{# Quick action buttons for NGINX control — included on health page #}
+<div class="card" x-data="{
+  showConfirm: false,
+  confirmTitle: '',
+  confirmMessage: '',
+  confirmAction: '',
+  confirmMethod: 'POST',
+  confirmBtnText: 'Confirm',
+  confirmBtnClass: 'btn-primary'
+}">
+  <div class="card-header">
+    <h2>Quick Actions</h2>
+  </div>
+  <div class="quick-actions">
+    <button class="btn btn-primary btn-sm"
+            @click="confirmTitle = 'Reload NGINX';
+                    confirmMessage = 'Gracefully reload configuration without dropping connections.';
+                    confirmAction = '/dashboard/nginx/reload';
+                    confirmBtnText = 'Reload';
+                    confirmBtnClass = 'btn-primary';
+                    showConfirm = true">
+      Reload
+    </button>
+    <button class="btn btn-warning btn-sm"
+            @click="confirmTitle = 'Restart NGINX';
+                    confirmMessage = 'WARNING: This restarts the container and will DROP all active connections. Use reload for config changes.';
+                    confirmAction = '/dashboard/nginx/restart';
+                    confirmBtnText = 'Restart';
+                    confirmBtnClass = 'btn-danger';
+                    showConfirm = true">
+      Restart
+    </button>
+    <button class="btn btn-sm"
+            hx-post="/dashboard/nginx/test"
+            hx-target="#toast-container"
+            hx-swap="beforeend">
+      Test Config
+    </button>
+  </div>
+  {% include "components/confirm_modal_generic.html" %}
+</div>

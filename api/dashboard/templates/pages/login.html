@@ -10,13 +10,40 @@
   <div class="login-wrapper">
     <div class="login-box">
       <h1>NGINX Manager</h1>
+
       {% if error %}
       <div class="login-error">{{ error }}</div>
       {% endif %}
+
+      {% if requires_2fa %}
+      {# Step 2: TOTP verification #}
+      <p style="color: var(--color-text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">
+        Enter the 6-digit code from your authenticator app.
+      </p>
+      <form method="post" action="/dashboard/login/verify-2fa">
+        <input type="hidden" name="challenge_token" value="{{ challenge_token }}">
+        <div class="form-group">
+          <label for="totp_code">Authentication Code</label>
+          <input type="text" id="totp_code" name="totp_code" required autofocus
+                 class="totp-input" maxlength="8" pattern="[a-zA-Z0-9]+"
+                 placeholder="000000" autocomplete="one-time-code">
+          <div class="hint">6-digit TOTP code or 8-character backup code.</div>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
+          Verify
+        </button>
+        <a href="/dashboard/login" style="display: block; text-align: center; margin-top: 0.75rem; font-size: 0.85rem;">
+          Back to Login
+        </a>
+      </form>
+
+      {% else %}
+      {# Step 1: Username + password #}
       <form method="post" action="/dashboard/login">
         <div class="form-group">
           <label for="username">Username</label>
-          <input type="text" id="username" name="username" required autofocus>
+          <input type="text" id="username" name="username" required autofocus
+                 value="{{ username or '' }}">
         </div>
         <div class="form-group">
           <label for="password">Password</label>
@@ -26,6 +53,7 @@
           Log In
         </button>
       </form>
+      {% endif %}
     </div>
   </div>
 </body>

@@ -114,11 +114,11 @@ Client (AI Agents / REST API / Web Dashboard)
   - `api/mcp_server/prompts.py` - Workflow templates (setup site, add SSL, diagnose connectivity)
 - `api/dashboard/` - Web dashboard (HTMX + Alpine.js + Jinja2, no SPA/build pipeline)
   - `api/dashboard/__init__.py` - Dashboard router factory, Jinja2Templates setup, static/template paths
-  - `api/dashboard/router.py` - All dashboard routes: page views, HTMX fragment endpoints, login/logout, site CRUD actions
+  - `api/dashboard/router.py` - All dashboard routes: pages, HTMX fragments, login/logout/2FA, site CRUD, NGINX quick actions, workflow execution, user/API key admin
   - `api/dashboard/dependencies.py` - Cookie-based JWT auth (HttpOnly, SameSite=Strict), HTMX detection helper
   - `api/dashboard/context.py` - Shared template context builders (auth state, health summary, nav state)
-  - `api/dashboard/templates/` - Jinja2 templates (base layout, 8 pages, 11 fragments, 7 components)
-  - `api/dashboard/static/` - CSS, JS, vendored libraries (htmx, Alpine.js, highlight.js)
+  - `api/dashboard/templates/` - Jinja2 templates (base layout, 12 pages, 15 fragments, 9 components)
+  - `api/dashboard/static/` - CSS, JS (workflow-sse.js, config-editor.js), vendored libraries (htmx, Alpine.js, highlight.js)
 
 **Docker setup:**
 - `docker/compose/dev.yml` - Development with hot reload, volumes mounted
@@ -462,7 +462,7 @@ curl -X POST http://localhost:8000/auth/2fa/confirm \
 - **Makefile**: `make lint`, `make format`, `make test`, `make test-cov`, `make ci`, `make dev`, `make down`
 - **Ruff config**: in `pyproject.toml` — target Python 3.12, line-length 120, select rules (E, W, F, I, N, UP, B, SIM, RUF)
 - **Test conftest** (`tests/conftest.py`): disables `AUTH_ENABLED` for unit tests so they don't require auth credentials
-- **Coverage threshold**: 45% minimum (`--cov-fail-under=45`), current: 673 tests
+- **Coverage threshold**: 45% minimum (`--cov-fail-under=45`), current: 698 tests
 - **Dependencies**: `pyotp>=2.9.0` (TOTP), `qrcode[pil]>=8.0` (QR codes) added in Phase 6.3, `highlight.js` vendored for dashboard
 
 ## Web Dashboard (Phase 7)
@@ -474,7 +474,10 @@ Server-rendered dashboard at `/dashboard/` using HTMX + Alpine.js + Jinja2. No S
 - **Config viewer**: NGINX syntax highlighting via highlight.js
 - **Dry-run validation**: Preview generated config before creating/updating sites
 - **Live status**: NGINX health indicator polled every 30s via HTMX fragment
-- **Auth**: Cookie-based JWT when `AUTH_ENABLED=true`, permissive access when disabled. 2FA-enabled accounts must use the API.
+- **Quick actions**: Reload, restart, test config buttons with confirmation dialogs on health page
+- **Workflow UI**: Setup-site and migrate-site workflow forms with SSE real-time progress display
+- **Admin pages**: User management (CRUD) and API key management (create/revoke), admin-only gated
+- **Auth**: Cookie-based JWT when `AUTH_ENABLED=true`, permissive access when disabled. 2FA login supported via two-step flow (password → TOTP code).
 - **Dashboard URL**: `http://localhost:8000/dashboard/`
 
 ### Dashboard Routes — Site Management
@@ -491,7 +494,7 @@ Server-rendered dashboard at `/dashboard/` using HTMX + Alpine.js + Jinja2. No S
 - `POST /dashboard/sites/validate` — dry-run validation (HTMX)
 
 ### Dashboard Routes — Monitoring
-- `GET /dashboard/health` — system health dashboard (NGINX status, sites, SSL, security warnings)
+- `GET /dashboard/health` — system health dashboard with quick action buttons (reload, restart, test config)
 - `GET /dashboard/certificates` — certificate overview with expiry timeline
 - `GET /dashboard/events` — event log with severity/category filtering and pagination
 - `GET /dashboard/transactions` — transaction history with status/operation filtering
@@ -499,13 +502,33 @@ Server-rendered dashboard at `/dashboard/` using HTMX + Alpine.js + Jinja2. No S
 - `GET /dashboard/transactions/{id}/detail` — transaction detail with diff viewer (HTMX)
 - `POST /dashboard/transactions/{id}/rollback` — one-click rollback action (HTMX)
 
+### Dashboard Routes — Quick Actions
+- `POST /dashboard/nginx/reload` — reload NGINX with confirmation (HTMX)
+- `POST /dashboard/nginx/restart` — restart NGINX container with warning (HTMX)
+- `POST /dashboard/nginx/test` — test NGINX config syntax (HTMX)
+
+### Dashboard Routes — Workflows
+- `GET /dashboard/workflows` — workflow launcher page (setup-site and migrate-site forms)
+- `POST /dashboard/workflows/{type}/execute` — execute workflow with SSE progress streaming
+
+### Dashboard Routes — Admin (admin-only)
+- `GET /dashboard/users` — user list page
+- `GET /dashboard/users/new` — create user form
+- `GET /dashboard/users/{id}/edit` — edit user form
+- `POST /dashboard/users` — create user action
+- `PUT /dashboard/users/{id}` — update user action
+- `DELETE /dashboard/users/{id}` — delete user action
+- `GET /dashboard/api-keys` — API key management page
+- `POST /dashboard/api-keys` — create API key action (shows plaintext key once)
+- `DELETE /dashboard/api-keys/{id}` — revoke API key action
+
 ### Dashboard Routes — System
 - `GET /dashboard/fragments/status` — health status fragment (polled every 30s)
-- `GET/POST /dashboard/login` — login page and action
+- `GET/POST /dashboard/login` — login page and action (with 2FA support)
+- `POST /dashboard/login/verify-2fa` — 2FA verification during login
 - `POST /dashboard/logout` — logout action
 
 ## Current Limitations
 
 - No mypy type checking (deferred — insufficient type annotations across codebase)
 - 2FA enforcement is advisory only (soft warnings, does not block login)
-- Dashboard does not support 2FA login flow (2FA users must use the API)

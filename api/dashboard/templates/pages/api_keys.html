@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}API Keys — NGINX Manager{% endblock %}
+
+{% block content %}
+{% if access_error %}
+<div class="card">
+  <p style="color: var(--color-danger);">{{ access_error }}</p>
+</div>
+{% else %}
+<div class="page-header">
+  <h1>API Keys</h1>
+</div>
+
+{% if not auth_enabled %}
+<div class="toast info" style="margin-bottom: 1rem;">
+  Authentication is disabled. Enable AUTH_ENABLED to manage API keys.
+</div>
+{% endif %}
+
+{% if auth_enabled %}
+<div class="card" style="margin-bottom: 1.5rem;">
+  <div class="card-header"><h2>Create New API Key</h2></div>
+  <form id="key-form" hx-post="/dashboard/api-keys" hx-target="#key-result" hx-swap="innerHTML">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="key-name">Name</label>
+        <input type="text" id="key-name" name="name" required placeholder="My API Key">
+      </div>
+      <div class="form-group">
+        <label for="key-role">Role</label>
+        <select id="key-role" name="role">
+          <option value="admin">Admin</option>
+          <option value="operator" selected>Operator</option>
+          <option value="viewer">Viewer</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="key-desc">Description</label>
+      <input type="text" id="key-desc" name="description" placeholder="Optional description">
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Create Key</button>
+    </div>
+  </form>
+  <div id="key-result" style="margin-top: 1rem;"></div>
+</div>
+{% endif %}
+
+<div id="key-list">
+  {% include "fragments/api_key_table.html" %}
+</div>
+{% endif %}
+{% endblock %}

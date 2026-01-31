@@ -7,6 +7,8 @@
   <h1>System Health</h1>
 </div>
 
+{% include "components/nginx_actions.html" %}
+
 <div id="health-cards"
      hx-get="/dashboard/fragments/health-cards"
      hx-trigger="every 15s"

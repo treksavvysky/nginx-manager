@@ -662,6 +662,95 @@ input:focus, select:focus {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Quick Actions ── */
+.quick-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.btn-warning {
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+}
+.btn-warning:hover { background: #fffbeb; }
+
+/* ── Role Badges ── */
+.role-badge-admin { background: #fef3c7; color: #92400e; }
+.role-badge-operator { background: #dbeafe; color: #1e40af; }
+.role-badge-viewer { background: #f3f4f6; color: #6b7280; }
+
+/* ── Workflow Progress ── */
+.workflow-progress {
+  padding: 1rem 0;
+}
+.workflow-progress h3 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+.workflow-step {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.9rem;
+}
+.workflow-step:last-child { border-bottom: none; }
+.workflow-step .step-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-muted);
+}
+.workflow-step.running .step-icon { background: var(--color-primary); animation: pulse 1.5s infinite; }
+.workflow-step.completed .step-icon { background: var(--color-success); }
+.workflow-step.failed .step-icon { background: var(--color-danger); }
+.workflow-step.skipped .step-icon { background: var(--color-muted); opacity: 0.5; }
+.workflow-step .step-info { flex: 1; }
+.workflow-step .step-info strong { margin-right: 0.5rem; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* ── TOTP Input ── */
+.totp-input {
+  letter-spacing: 0.5em;
+  text-align: center;
+  font-size: 1.5rem;
+  font-family: var(--font-mono);
+}
+
+/* ── Key Display ── */
+.key-display {
+  display: block;
+  padding: 0.5rem;
+  background: #1e1e2e;
+  color: #a6e3a1;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  word-break: break-all;
+  margin-top: 0.5rem;
+  user-select: all;
+}
+
+/* ── Email Input ── */
+input[type="email"] {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: var(--color-surface);
+  color: var(--color-text);
+  transition: border-color 0.15s;
+}
+input[type="email"]:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .layout {

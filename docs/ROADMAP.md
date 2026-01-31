@@ -294,7 +294,7 @@ Before building a dashboard, the project needed CI/CD, expanded test coverage, a
 
 ## Phase 7: Web Dashboard
 
-**Status: In Progress** — 673 tests
+**Status: In Progress** — 698 tests
 
 The dashboard serves three purposes that AI interfaces handle poorly: **observability** (glancing at system state without asking a question), **manual intervention** (a button is faster than a prompt when something is wrong), and **trust calibration** (new users need to see what the system is doing before trusting an AI agent).
 
@@ -341,10 +341,15 @@ This keeps the dashboard as a thin view layer over API calls, which is critical 
 **New routes**: `GET /dashboard/health`, `GET /dashboard/certificates`, `GET /dashboard/events`, `GET /dashboard/transactions`, `GET /dashboard/fragments/health-cards`, `GET /dashboard/transactions/{id}/detail`, `POST /dashboard/transactions/{id}/rollback`
 
 ### 7.3 Operations
-- [ ] Quick action buttons (reload, restart, test config) with confirmation
-- [ ] Workflow trigger UI (setup-site, migrate-site) with SSE progress display
-- [ ] User and API key management pages (admin only)
-- [ ] Login page with 2FA support (Phase 6.3 API complete)
+**Status: Complete** — 698 tests, 25 new dashboard operations tests
+
+- [x] Quick action buttons (reload, restart, test config) with confirmation modals on health page
+- [x] Workflow trigger UI (setup-site, migrate-site) with SSE real-time progress display
+- [x] User and API key management pages (admin only, with HTMX inline actions)
+- [x] Login page with 2FA support (two-step flow: password → TOTP code)
+
+**New files**: 12 Jinja2 templates (4 pages, 4 fragments, 2 components), `workflow-sse.js`, `tests/unit/test_dashboard_operations.py`
+**New routes**: `POST /dashboard/nginx/{reload,restart,test}`, `GET/POST /dashboard/workflows`, `GET/POST/PUT/DELETE /dashboard/users/*`, `GET/POST/DELETE /dashboard/api-keys/*`, `POST /dashboard/login/verify-2fa`
 
 ### 7.4 Dashboard Design Principles
 - Read-heavy, action-light — complex operations belong in the AI interfaces
@@ -471,7 +476,8 @@ This is the architectural inflection point. Moving from one NGINX container to m
 - [x] 2FA login flow tests (8 tests)
 - [x] Dashboard route tests (13 tests: pages, fragments, static assets, security headers)
 - [x] Dashboard monitoring tests (18 tests: health, certificates, events, transactions, rollback, navigation)
-- [x] Total: 673 unit tests
+- [x] Dashboard operations tests (25 tests: quick actions, workflows, admin pages, 2FA login, navigation)
+- [x] Total: 698 unit tests
 
 ### Integration Tests
 - [x] API endpoint tests with actual NGINX container

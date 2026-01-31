@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit User' if edit_mode else 'New User' }} — NGINX Manager{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{% if edit_mode %}Edit {{ user.username }}{% else %}Create New User{% endif %}</h1>
+</div>
+
+<div class="card">
+  <form id="user-form"
+        {% if edit_mode %}
+        hx-put="/dashboard/users/{{ user.id }}"
+        {% else %}
+        hx-post="/dashboard/users"
+        {% endif %}
+        hx-target="#form-result"
+        hx-swap="innerHTML">
+
+    {% if not edit_mode %}
+    <div class="form-group">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" required
+             pattern="[a-zA-Z0-9_.-]+" minlength="3" maxlength="50"
+             placeholder="admin">
+      <div class="hint">3-50 characters. Letters, digits, underscores, dots, hyphens.</div>
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required minlength="12" maxlength="128">
+      <div class="hint">Min 12 chars, at least one uppercase, one lowercase, one digit.</div>
+    </div>
+    {% endif %}
+
+    <div class="form-group">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email"
+             value="{% if edit_mode and user %}{{ user.email or '' }}{% endif %}">
+    </div>
+
+    <div class="form-group">
+      <label for="role">Role</label>
+      <select id="role" name="role">
+        <option value="admin" {% if edit_mode and user and user.role == 'admin' %}selected{% endif %}>Admin</option>
+        <option value="operator" {% if not edit_mode %}selected{% endif %}{% if edit_mode and user and user.role == 'operator' %}selected{% endif %}>Operator</option>
+        <option value="viewer" {% if edit_mode and user and user.role == 'viewer' %}selected{% endif %}>Viewer</option>
+      </select>
+    </div>
+
+    {% if edit_mode %}
+    <div class="form-group">
+      <div class="checkbox-group">
+        <input type="checkbox" id="is_active" name="is_active" {% if user.is_active %}checked{% endif %}>
+        <label for="is_active" style="margin-bottom: 0;">Active</label>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">
+        {% if edit_mode %}Save Changes{% else %}Create User{% endif %}
+      </button>
+      <a href="/dashboard/users" class="btn">Cancel</a>
+    </div>
+  </form>
+  <div id="form-result" style="margin-top: 1rem;"></div>
+</div>
+{% endblock %}
