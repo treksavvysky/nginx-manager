@@ -172,6 +172,22 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
+
+-- Sessions table (Phase 6.3: Session Management)
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    is_revoked BOOLEAN DEFAULT 0,
+    revoked_at TEXT DEFAULT NULL,
+    ip_address TEXT DEFAULT NULL,
+    user_agent TEXT DEFAULT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 """
 
 
@@ -204,6 +220,11 @@ class Database:
             ("events", "client_ip", "ALTER TABLE events ADD COLUMN client_ip TEXT"),
             ("events", "user_id", "ALTER TABLE events ADD COLUMN user_id TEXT"),
             ("events", "api_key_id", "ALTER TABLE events ADD COLUMN api_key_id TEXT"),
+            # Phase 6.3: TOTP 2FA columns on users table
+            ("users", "totp_secret_encrypted", "ALTER TABLE users ADD COLUMN totp_secret_encrypted TEXT DEFAULT NULL"),
+            ("users", "totp_enabled", "ALTER TABLE users ADD COLUMN totp_enabled BOOLEAN DEFAULT 0"),
+            ("users", "totp_confirmed_at", "ALTER TABLE users ADD COLUMN totp_confirmed_at TEXT DEFAULT NULL"),
+            ("users", "backup_codes_json", "ALTER TABLE users ADD COLUMN backup_codes_json TEXT DEFAULT NULL"),
         ]
         async with self.connection() as db:
             for table, column, sql in migrations:

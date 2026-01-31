@@ -67,7 +67,9 @@ Client (AI Agents / REST API)
 - `api/endpoints/workflows.py` - Compound workflow endpoints (setup-site, migrate-site) with SSE streaming
 - `api/endpoints/gpt.py` - GPT integration endpoints (openapi.json schema, instructions)
 - `api/endpoints/auth.py` - Authentication endpoints (bootstrap, API key CRUD, token exchange/refresh)
-- `api/endpoints/users.py` - User management endpoints (login, user CRUD, password change)
+- `api/endpoints/users.py` - User management endpoints (login, verify-2fa, user CRUD, password change)
+- `api/endpoints/totp.py` - TOTP 2FA endpoints (enroll, confirm, disable, status, backup code regeneration)
+- `api/endpoints/sessions.py` - Session management endpoints (list, revoke specific, revoke all)
 - `api/core/config_manager/crossplane_parser.py` - Crossplane-based NGINX parser (full directive support: server, location, upstream, map, geo, include resolution)
 - `api/core/config_manager/adapter.py` - Converts parsed config to API response format
 - `api/core/config_generator/generator.py` - Jinja2-based NGINX config generator
@@ -81,13 +83,15 @@ Client (AI Agents / REST API)
 - `api/core/event_store.py` - Event persistence and querying
 - `api/core/snapshot_service.py` - Configuration state capture and restoration
 - `api/core/context_helpers.py` - Generates suggestions, warnings, and security warnings for AI-friendly responses
-- `api/core/auth_service.py` - API key + JWT token management (creation, validation, hashing)
-- `api/core/auth_dependency.py` - FastAPI Depends() for authentication and role-based access control
-- `api/core/user_service.py` - User account management (bcrypt hashing, login with lockout, CRUD)
-- `api/core/encryption_service.py` - Fernet encryption for private key storage at rest
+- `api/core/auth_service.py` - API key + JWT token management (creation, validation, hashing, challenge tokens for 2FA)
+- `api/core/auth_dependency.py` - FastAPI Depends() for authentication, role-based access control, session revocation checks, 2FA challenge token rejection
+- `api/core/user_service.py` - User account management (bcrypt hashing, login with lockout, CRUD, 2FA-aware authentication)
+- `api/core/totp_service.py` - TOTP 2FA lifecycle (secret generation, QR code, enrollment, confirmation, verification, backup codes)
+- `api/core/session_service.py` - JWT session tracking (create, revoke, list active, cleanup expired)
+- `api/core/encryption_service.py` - Fernet encryption for private key and TOTP secret storage at rest
 - `api/core/rate_limiter.py` - slowapi rate limiting configuration
 - `api/core/request_logger.py` - HTTP request logging middleware
-- `api/core/database.py` - SQLite async database management (transactions, events, certificates, acme_accounts, api_keys, users)
+- `api/core/database.py` - SQLite async database management (transactions, events, certificates, acme_accounts, api_keys, users, sessions)
 - `api/core/workflow_engine.py` - Generic workflow execution engine with checkpoint-based rollback and progress callbacks
 - `api/core/workflow_definitions.py` - Concrete step implementations for setup-site and migrate-site workflows
 - `api/core/gpt_schema.py` - Transforms FastAPI OpenAPI schema for Custom GPT Actions compatibility (tag filtering, description truncation, operationId enforcement)
@@ -95,7 +99,7 @@ Client (AI Agents / REST API)
 - `api/models/certificate.py` - SSL certificate models: Certificate, CertificateStatus, CertificateRequestCreate, CertificateUploadRequest, CertificateMutationResponse
 - `api/models/transaction.py` - Transaction, TransactionDetail, RollbackResult models
 - `api/models/event.py` - Event, EventFilters models (with audit fields: client_ip, user_id, api_key_id)
-- `api/models/auth.py` - Auth models: Role, AuthContext, APIKey, User, LoginRequest/Response, TokenRequest/Response
+- `api/models/auth.py` - Auth models: Role, AuthContext, APIKey, User, LoginRequest/Response, TokenRequest/Response, TOTPEnrollResponse, TOTPConfirmRequest, TOTPVerifyRequest, TOTPStatusResponse, SessionInfo, SessionListResponse
 - `api/models/config.py` - Pydantic models: SiteConfig, SiteConfigResponse, ConfigValidationResult
 - `api/models/site_requests.py` - Site CRUD request/response models: SiteCreateRequest, SiteUpdateRequest, SiteMutationResponse, DryRunResult, DryRunDiff
 - `api/models/workflow.py` - Workflow models: SetupSiteRequest, MigrateSiteRequest, WorkflowResponse, WorkflowDryRunResponse, WorkflowProgressEvent
@@ -177,6 +181,13 @@ Environment variables managed via Pydantic BaseSettings in `api/config.py`:
 - `CORS_ALLOWED_ORIGINS` - Comma-separated list of allowed CORS origins (empty = wildcard in debug mode only)
 - `ENCRYPT_PRIVATE_KEYS` - Encrypt SSL private keys at rest using Fernet (default: false)
 - `PRIVATE_KEY_ENCRYPTION_KEY` - Passphrase for private key encryption (min 16 chars recommended)
+- `TOTP_ISSUER_NAME` - Issuer name shown in authenticator apps (default: "NGINX Manager")
+- `TOTP_ENFORCE_ADMIN` - Soft-enforce 2FA for admin users, advisory warning on login (default: true)
+- `TOTP_ENFORCE_OPERATOR` - Soft-enforce 2FA for operator users (default: false)
+- `TOTP_DIGITS` - Number of digits in TOTP codes (default: 6)
+- `TOTP_INTERVAL` - TOTP code rotation interval in seconds (default: 30)
+- `TOTP_CHALLENGE_EXPIRY_MINUTES` - 2FA challenge token lifetime (default: 5)
+- `SESSION_CLEANUP_INTERVAL_HOURS` - Interval for expired session cleanup (default: 24)
 
 ## API Usage Examples
 
@@ -355,19 +366,46 @@ Compound operations that orchestrate multiple API calls with checkpoint-based ro
 
 See `docs/AGENT_WORKFLOWS.md` for full documentation.
 
-## Authentication & Security (Phase 5)
+## Authentication & Security (Phase 5 + 6.3)
 
 Authentication is **opt-in** via `AUTH_ENABLED=true` (default: false for backward compatibility).
 
 ### Auth Methods
 - **API Key**: `X-API-Key` header, SHA-256 hashed storage, key format `ngx_` + 64 hex chars
 - **JWT Token**: `Authorization: Bearer <token>` header, exchanged from API key or user login
-- **User Login**: `POST /auth/login` with username/password, returns JWT token
+- **User Login**: `POST /auth/login` with username/password, returns JWT token (or 2FA challenge token)
 
 ### Role Hierarchy
 - **ADMIN** (level 3): Full access including user/key management and rollback
 - **OPERATOR** (level 2): Create, update, delete sites/certs, reload NGINX
 - **VIEWER** (level 1): Read-only access
+
+### Two-Factor Authentication (Phase 6.3)
+Optional TOTP-based 2FA for password-authenticated users. API key auth is unaffected.
+
+**Two-step login flow:**
+1. `POST /auth/login` — password check. If 2FA enabled, returns a short-lived challenge token (5 min). If no 2FA, returns session JWT directly (backward compatible).
+2. `POST /auth/verify-2fa` — challenge token + TOTP code → full session JWT with `jti` claim.
+
+**2FA management endpoints** (all at `/auth/2fa`):
+- `POST /auth/2fa/enroll` — generates TOTP secret, QR code data URI, and 10 backup codes
+- `POST /auth/2fa/confirm` — verifies first TOTP code to activate 2FA
+- `POST /auth/2fa/disable` — disables 2FA (requires password confirmation)
+- `GET /auth/2fa/status` — returns 2FA state, enforcement level, backup codes remaining
+- `POST /auth/2fa/backup-codes/regenerate` — generates new backup codes (requires TOTP verification)
+
+**Enforcement**: Soft/advisory only. `TOTP_ENFORCE_ADMIN=true` and `TOTP_ENFORCE_OPERATOR=false` add warnings to login responses but never block access.
+
+**Backup codes**: 10 random 8-character alphanumeric codes, SHA-256 hashed, consumable on use. Can be used in place of TOTP codes during login.
+
+### Session Management (Phase 6.3)
+User-originated JWTs include a `jti` (JWT ID) claim tracked in the `sessions` database table. API-key-originated tokens are stateless and not tracked.
+
+- `GET /auth/sessions` — list active (non-expired, non-revoked) sessions
+- `DELETE /auth/sessions/{session_id}` — revoke a specific session
+- `DELETE /auth/sessions` — revoke all sessions except the current one
+
+The auth dependency checks session revocation on every request. Challenge tokens are rejected from normal API endpoints.
 
 ### Security Features
 - Rate limiting (slowapi): 60 req/min default, keyed by IP + auth identity
@@ -376,6 +414,7 @@ Authentication is **opt-in** via `AUTH_ENABLED=true` (default: false for backwar
 - NGINX config injection prevention (semicolons, braces, backticks, dollar signs blocked)
 - SSRF prevention (cloud metadata endpoints blocked in proxy_pass)
 - Private key encryption at rest (Fernet, optional)
+- TOTP secret encryption at rest (Fernet, via existing EncryptionService)
 - Security warnings surfaced in `/health` endpoint
 - MCP auth: API key env var for stdio, Bearer header for HTTP transport
 
@@ -394,6 +433,14 @@ curl -X POST http://localhost:8000/auth/users \
 # 4. Login
 curl -X POST http://localhost:8000/auth/login \
   -d '{"username":"admin","password":"SecurePass123!"}'
+
+# 5. (Optional) Enable 2FA
+curl -X POST http://localhost:8000/auth/2fa/enroll \
+  -H "Authorization: Bearer <token>"
+# Scan QR code with authenticator app, then confirm:
+curl -X POST http://localhost:8000/auth/2fa/confirm \
+  -H "Authorization: Bearer <token>" \
+  -d '{"totp_code":"123456"}'
 ```
 
 ## CI/CD Pipeline (Phase 6.1)
@@ -405,10 +452,11 @@ curl -X POST http://localhost:8000/auth/login \
 - **Makefile**: `make lint`, `make format`, `make test`, `make test-cov`, `make ci`, `make dev`, `make down`
 - **Ruff config**: in `pyproject.toml` — target Python 3.12, line-length 120, select rules (E, W, F, I, N, UP, B, SIM, RUF)
 - **Test conftest** (`tests/conftest.py`): disables `AUTH_ENABLED` for unit tests so they don't require auth credentials
-- **Coverage threshold**: 45% minimum (`--cov-fail-under=45`), current baseline ~52%
+- **Coverage threshold**: 45% minimum (`--cov-fail-under=45`), current: 65.28% with 642 tests
+- **Dependencies**: `pyotp>=2.9.0` (TOTP), `qrcode[pil]>=8.0` (QR codes) added in Phase 6.3
 
 ## Current Limitations
 
 - No web dashboard (Phase 7, API only)
-- 2FA not yet available (Phase 6.3)
 - No mypy type checking (deferred — insufficient type annotations across codebase)
+- 2FA enforcement is advisory only (soft warnings, does not block login)

@@ -137,6 +137,27 @@ class Settings(BaseSettings):
         default=True, alias="MCP_REQUIRE_AUTH", description="Require authentication for MCP connections"
     )
 
+    # TOTP / 2FA (Phase 6.3)
+    totp_issuer_name: str = Field(
+        default="NGINX Manager", alias="TOTP_ISSUER_NAME", description="Issuer name shown in authenticator apps"
+    )
+    totp_enforce_admin: bool = Field(
+        default=True, alias="TOTP_ENFORCE_ADMIN", description="Warn admins to enable 2FA (soft enforcement)"
+    )
+    totp_enforce_operator: bool = Field(
+        default=False, alias="TOTP_ENFORCE_OPERATOR", description="Warn operators to enable 2FA (soft enforcement)"
+    )
+    totp_digits: int = Field(default=6, alias="TOTP_DIGITS", description="Number of digits in TOTP codes")
+    totp_interval: int = Field(default=30, alias="TOTP_INTERVAL", description="TOTP time step in seconds")
+    totp_challenge_expiry_minutes: int = Field(
+        default=5, alias="TOTP_CHALLENGE_EXPIRY_MINUTES", description="2FA challenge token lifetime in minutes"
+    )
+
+    # Session Management (Phase 6.3)
+    session_cleanup_interval_hours: int = Field(
+        default=24, alias="SESSION_CLEANUP_INTERVAL_HOURS", description="Hours between expired session cleanup runs"
+    )
+
     # CORS & Security (Phase 5.3)
     cors_allowed_origins: str = Field(
         default="",

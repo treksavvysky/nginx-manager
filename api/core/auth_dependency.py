@@ -60,6 +60,27 @@ async def get_current_auth(
     if bearer_token:
         auth_ctx = auth_service.validate_jwt_token(bearer_token)
         if auth_ctx is not None:
+            # Reject 2FA challenge tokens from normal endpoints
+            payload = auth_service.decode_token_payload(bearer_token)
+            if payload and payload.get("purpose") == "2fa_challenge":
+                raise HTTPException(
+                    status_code=401,
+                    detail="2FA challenge tokens cannot be used for API access. Complete login with POST /auth/verify-2fa.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            # Check session revocation for session tokens with jti
+            if payload and payload.get("jti"):
+                from core.session_service import get_session_service
+
+                session_service = get_session_service()
+                if await session_service.is_session_revoked(payload["jti"]):
+                    raise HTTPException(
+                        status_code=401,
+                        detail="Session has been revoked.",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
             auth_ctx.client_ip = client_ip
             return auth_ctx
         raise HTTPException(

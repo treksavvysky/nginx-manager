@@ -9,6 +9,7 @@ JWT tokens provide stateless session authentication.
 import hashlib
 import logging
 import secrets
+import uuid
 from datetime import datetime, timedelta
 
 import jwt
@@ -182,9 +183,19 @@ class AuthService:
 
     # --- JWT Methods ---
 
-    def create_jwt_token(self, auth_context: AuthContext) -> tuple[str, int]:
+    def create_jwt_token(
+        self,
+        auth_context: AuthContext,
+        purpose: str = "session",
+        expires_in_override: int | None = None,
+    ) -> tuple[str, int]:
         """
         Create a JWT token encoding the given auth context.
+
+        Args:
+            auth_context: Authentication context to encode.
+            purpose: Token purpose — "session" (default) or "2fa_challenge".
+            expires_in_override: Override token lifetime in seconds.
 
         Returns:
             Tuple of (token_string, expires_in_seconds)
@@ -196,13 +207,14 @@ class AuthService:
         if not secret:
             raise ValueError("JWT_SECRET_KEY must be configured to issue tokens. Set it in environment variables.")
 
-        expires_in = settings.jwt_expiry_minutes * 60
+        expires_in = expires_in_override or settings.jwt_expiry_minutes * 60
         now = datetime.utcnow()
 
         payload = {
             "sub": auth_context.api_key_id or auth_context.user_id or "anonymous",
             "role": auth_context.role.value,
             "auth_method": auth_context.auth_method,
+            "purpose": purpose,
             "iat": now,
             "exp": now + timedelta(seconds=expires_in),
         }
@@ -212,8 +224,23 @@ class AuthService:
         if auth_context.user_id:
             payload["user_id"] = auth_context.user_id
 
+        # Add jti for session tokens (enables revocation)
+        if purpose == "session" and auth_context.user_id:
+            payload["jti"] = str(uuid.uuid4())
+
         token = jwt.encode(payload, secret, algorithm=settings.jwt_algorithm)
         return token, expires_in
+
+    def create_challenge_token(self, user_id: str, role: Role) -> tuple[str, int]:
+        """
+        Create a short-lived 2FA challenge token.
+
+        Returns:
+            Tuple of (token_string, expires_in_seconds)
+        """
+        ctx = AuthContext(user_id=user_id, role=role, auth_method="user")
+        expires_in = settings.totp_challenge_expiry_minutes * 60
+        return self.create_jwt_token(ctx, purpose="2fa_challenge", expires_in_override=expires_in)
 
     def validate_jwt_token(self, token: str) -> AuthContext | None:
         """
@@ -244,6 +271,21 @@ class AuthService:
             role=Role(payload["role"]),
             auth_method="jwt",
         )
+
+    def decode_token_payload(self, token: str) -> dict | None:
+        """
+        Decode a JWT token and return the full payload dict.
+
+        Returns None if the token is invalid or expired.
+        """
+        secret = settings.jwt_secret_key
+        if not secret:
+            return None
+
+        try:
+            return jwt.decode(token, secret, algorithms=[settings.jwt_algorithm])
+        except jwt.InvalidTokenError:
+            return None
 
 
 # Singleton

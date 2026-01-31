@@ -17,6 +17,7 @@ from models.auth import (
     LoginResponse,
     PasswordChangeRequest,
     Role,
+    TOTPVerifyRequest,
     User,
     UserCreateRequest,
     UserListResponse,
@@ -35,32 +36,184 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     description="""
     Authenticate with a username and password to receive a JWT token.
 
+    If the user has 2FA enabled, this returns a short-lived challenge token
+    instead of a session token. Use `POST /auth/verify-2fa` with the challenge
+    token and a TOTP code to complete login.
+
     Accounts are locked for 30 minutes after 5 consecutive failed attempts.
     """,
     responses={
-        200: {"description": "Login successful, JWT token returned"},
+        200: {"description": "Login successful or 2FA challenge issued"},
         401: {"description": "Invalid credentials or account locked"},
         400: {"description": "JWT not configured"},
     },
 )
 async def login(request: LoginRequest):
-    """Authenticate and receive a JWT token."""
+    """Authenticate and receive a JWT token (or 2FA challenge)."""
     user_service = get_user_service()
-    auth_ctx = await user_service.authenticate(request.username, request.password)
+    result = await user_service.authenticate(request.username, request.password)
 
-    if auth_ctx is None:
+    if result is None:
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password, or account is locked.",
         )
 
+    auth_ctx, totp_enabled = result
     auth_service = get_auth_service()
+    user = await user_service.get_user(auth_ctx.user_id)
+
+    if totp_enabled:
+        # Issue a 2FA challenge token instead of a session token
+        try:
+            challenge_token, expires_in = auth_service.create_challenge_token(auth_ctx.user_id, auth_ctx.role)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        return LoginResponse(
+            access_token=challenge_token,
+            expires_in=expires_in,
+            role=auth_ctx.role,
+            user=user,
+            requires_2fa=True,
+            challenge_token=challenge_token,
+            suggestions=[
+                {
+                    "action": "Complete login with POST /auth/verify-2fa",
+                    "reason": "This account requires two-factor authentication",
+                    "priority": "high",
+                }
+            ],
+        )
+
+    # No 2FA — issue session token directly
     try:
         token, expires_in = auth_service.create_jwt_token(auth_ctx)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    user = await user_service.get_user(auth_ctx.user_id)
+    # Track session if jti present
+    payload = auth_service.decode_token_payload(token)
+    if payload and payload.get("jti"):
+        from datetime import datetime, timedelta
+
+        from core.session_service import get_session_service
+
+        session_service = get_session_service()
+        await session_service.create_session(
+            jti=payload["jti"],
+            user_id=auth_ctx.user_id,
+            expires_at=datetime.utcnow() + timedelta(seconds=expires_in),
+        )
+
+    # Check 2FA enforcement (soft warning)
+    from config import settings as app_settings
+
+    totp_setup_required = False
+    suggestions = [
+        {
+            "action": "Use Authorization: Bearer <token> header",
+            "reason": "Include the JWT in subsequent requests for stateless auth",
+            "priority": "high",
+        }
+    ]
+    if auth_ctx.role == Role.ADMIN and app_settings.totp_enforce_admin:
+        totp_setup_required = True
+        suggestions.append(
+            {
+                "action": "Enable two-factor authentication",
+                "reason": "2FA is recommended for admin accounts. Use POST /auth/2fa/enroll",
+                "priority": "high",
+            }
+        )
+    elif auth_ctx.role == Role.OPERATOR and app_settings.totp_enforce_operator:
+        totp_setup_required = True
+        suggestions.append(
+            {
+                "action": "Enable two-factor authentication",
+                "reason": "2FA is recommended for operator accounts. Use POST /auth/2fa/enroll",
+                "priority": "medium",
+            }
+        )
+
+    return LoginResponse(
+        access_token=token,
+        expires_in=expires_in,
+        role=auth_ctx.role,
+        user=user,
+        totp_setup_required=totp_setup_required,
+        suggestions=suggestions,
+    )
+
+
+@router.post(
+    "/verify-2fa",
+    response_model=LoginResponse,
+    summary="Complete 2FA Login",
+    description="""
+    Complete login by verifying a TOTP code after receiving a 2FA challenge.
+
+    Provide the challenge_token from the login response and a valid 6-digit
+    TOTP code from your authenticator app (or an 8-character backup code).
+    """,
+    responses={
+        200: {"description": "2FA verified, session token returned"},
+        401: {"description": "Invalid or expired challenge token, or invalid TOTP code"},
+    },
+)
+async def verify_2fa(request: TOTPVerifyRequest):
+    """Complete 2FA login with a challenge token and TOTP code."""
+    auth_service = get_auth_service()
+    payload = auth_service.decode_token_payload(request.challenge_token)
+
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired challenge token.")
+
+    if payload.get("purpose") != "2fa_challenge":
+        raise HTTPException(status_code=401, detail="Invalid token type. Expected a 2FA challenge token.")
+
+    user_id = payload.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid challenge token.")
+
+    # Verify TOTP code
+    from core.totp_service import get_totp_service
+
+    totp_service = get_totp_service()
+    verified = await totp_service.verify_totp(user_id, request.totp_code)
+    if not verified:
+        raise HTTPException(status_code=401, detail="Invalid TOTP code or backup code.")
+
+    # Issue full session token
+    from models.auth import Role
+
+    auth_ctx = AuthContext(
+        user_id=user_id,
+        role=Role(payload["role"]),
+        auth_method="user",
+    )
+
+    try:
+        token, expires_in = auth_service.create_jwt_token(auth_ctx, purpose="session")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Track session
+    session_payload = auth_service.decode_token_payload(token)
+    if session_payload and session_payload.get("jti"):
+        from datetime import datetime, timedelta
+
+        from core.session_service import get_session_service
+
+        session_service = get_session_service()
+        await session_service.create_session(
+            jti=session_payload["jti"],
+            user_id=user_id,
+            expires_at=datetime.utcnow() + timedelta(seconds=expires_in),
+        )
+
+    user_service = get_user_service()
+    user = await user_service.get_user(user_id)
 
     return LoginResponse(
         access_token=token,

@@ -296,6 +296,7 @@ class TestAuthDependencyJWT:
 
         mock_auth_service = MagicMock()
         mock_auth_service.validate_jwt_token = MagicMock(return_value=expected_ctx)
+        mock_auth_service.decode_token_payload = MagicMock(return_value=None)
 
         with patch("core.auth_dependency.settings") as mock_settings:
             mock_settings.auth_enabled = True

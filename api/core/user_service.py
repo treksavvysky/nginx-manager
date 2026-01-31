@@ -60,6 +60,7 @@ class UserService:
             else None,
             failed_login_attempts=row["failed_login_attempts"] or 0,
             locked_until=datetime.fromisoformat(row["locked_until"]) if row["locked_until"] else None,
+            totp_enabled=bool(row.get("totp_enabled", False)),
         )
 
     async def create_user(
@@ -115,11 +116,11 @@ class UserService:
         self,
         username: str,
         password: str,
-    ) -> AuthContext | None:
+    ) -> tuple[AuthContext, bool] | None:
         """
         Authenticate a user by username and password.
 
-        Returns AuthContext on success, None on failure.
+        Returns (AuthContext, totp_enabled) on success, None on failure.
         Implements account lockout after MAX_FAILED_ATTEMPTS failures.
         """
         row = await self.db.fetch_one("SELECT * FROM users WHERE username = ?", (username,))
@@ -169,11 +170,13 @@ class UserService:
             },
         )
 
-        return AuthContext(
+        auth_ctx = AuthContext(
             user_id=row["id"],
             role=Role(row["role"]),
             auth_method="user",
         )
+        totp_enabled = bool(row.get("totp_enabled", False))
+        return auth_ctx, totp_enabled
 
     async def get_user(self, user_id: str) -> User | None:
         """Get a user by ID."""

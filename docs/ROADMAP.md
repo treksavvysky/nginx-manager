@@ -220,7 +220,7 @@ Full authentication, authorization, and security hardening. Backward-compatible:
 - [x] Account lockout after 5 failed attempts (30 min)
 - [x] User CRUD (create, list, get, update, delete)
 - [x] Password change (self + admin reset)
-- [ ] Optional 2FA (deferred to 5.2b)
+- [x] Optional 2FA (implemented in Phase 6.3)
 
 ### 5.3 Security Hardening
 - [x] Input sanitization for config generation (NGINX directive injection prevention)
@@ -238,9 +238,9 @@ Full authentication, authorization, and security hardening. Backward-compatible:
 
 ## Phase 6: Engineering Foundation
 
-**Status: In Progress**
+**Status: Complete**
 
-Before building a dashboard, the project needs CI/CD, expanded test coverage, and the deferred security work. These investments compound — every subsequent phase ships faster and more reliably with this foundation in place.
+Before building a dashboard, the project needed CI/CD, expanded test coverage, and the deferred security work. These investments compound — every subsequent phase ships faster and more reliably with this foundation in place.
 
 **Rationale**: 420 unit tests with no CI pipeline means they only run when someone remembers to. MCP compliance tests and agent conversation tests are high-value for an AI-first tool — they validate the primary interface. 2FA must land before the web dashboard exposes authentication to browsers.
 
@@ -250,7 +250,7 @@ Before building a dashboard, the project needs CI/CD, expanded test coverage, an
 - [x] GitHub Actions CI workflow (lint → test → Docker build) on push/PR to main
 - [x] Automated linting with ruff (check + format enforcement)
 - [x] Docker image builds on tagged releases (`.github/workflows/release.yml`)
-- [x] Test coverage reporting with 45% minimum threshold (current baseline: 52%)
+- [x] Test coverage reporting with 45% minimum threshold (current: 65.28%)
 - [x] Dependency vulnerability scanning (dependabot: pip weekly, GitHub Actions weekly, Docker monthly)
 - [x] Makefile with dev targets (`make lint`, `make format`, `make test`, `make test-cov`, `make ci`)
 - [x] Pre-commit hooks (ruff check+fix, ruff format, trailing whitespace, end-of-file, YAML, large files)
@@ -259,18 +259,31 @@ Before building a dashboard, the project needs CI/CD, expanded test coverage, an
 **Note**: mypy deferred — 19+ core modules with no type annotations would produce hundreds of errors. Will revisit when type coverage is sufficient to be useful.
 
 ### 6.2 Test Coverage Expansion
-- [ ] MCP protocol compliance tests (validate resource/tool schemas against MCP spec)
-- [ ] MCP end-to-end tests (stdio transport with real server)
-- [ ] Simulated agent conversation flows (multi-turn scenarios)
-- [ ] Error recovery test scenarios (partial failures, rollback verification)
-- [ ] Multi-step workflow integration tests
-- [ ] API contract tests (ensure backward compatibility on schema changes)
+**Status: Complete** — 590 tests, 64.31% coverage
 
-### 6.3 Deferred Security
-- [ ] Optional TOTP-based 2FA for user accounts (deferred from Phase 5.2b)
-- [ ] 2FA enrollment flow (QR code generation, backup codes)
-- [ ] 2FA enforcement per role (optional for operators, required for admins)
-- [ ] Session management improvements (token revocation, active session listing)
+- [x] MCP protocol compliance tests (validate resource/tool schemas against MCP spec)
+- [x] MCP end-to-end tests (resource and tool integration)
+- [x] Simulated agent conversation flows (multi-turn scenarios)
+- [x] Error recovery test scenarios (partial failures, rollback verification)
+- [x] Multi-step workflow integration tests
+- [x] API contract tests (ensure backward compatibility on schema changes)
+
+### 6.3 Deferred Security — TOTP 2FA & Session Management
+**Status: Complete** — 642 tests, 65.28% coverage
+
+- [x] Optional TOTP-based 2FA for user accounts (deferred from Phase 5.2b)
+- [x] 2FA enrollment flow (QR code generation via `pyotp` + `qrcode[pil]`, backup codes)
+- [x] Two-step login: password → challenge token (5 min) → TOTP verify → session token
+- [x] 2FA enforcement per role (soft/advisory: `TOTP_ENFORCE_ADMIN=true`, `TOTP_ENFORCE_OPERATOR=false`)
+- [x] Session management (JWT `jti` tracking, single/bulk revocation, active session listing)
+- [x] Session cleanup for expired tokens
+- [x] Auth dependency hardened: challenge tokens rejected from normal endpoints, revoked sessions blocked
+- [x] TOTP secrets encrypted at rest via existing EncryptionService (Fernet)
+- [x] Backup codes: 10 SHA-256 hashed one-time recovery codes, consumable on use
+- [x] 52 new tests: TOTP service (20), session service (13), TOTP endpoints (11), 2FA login flow (8)
+
+**New files**: `api/core/totp_service.py`, `api/core/session_service.py`, `api/endpoints/totp.py`, `api/endpoints/sessions.py`
+**New endpoints**: `POST /auth/verify-2fa`, `POST /auth/2fa/enroll`, `POST /auth/2fa/confirm`, `POST /auth/2fa/disable`, `GET /auth/2fa/status`, `POST /auth/2fa/backup-codes/regenerate`, `GET /auth/sessions`, `DELETE /auth/sessions/{id}`, `DELETE /auth/sessions`
 
 ### 6.4 Deferred AI-Native Items
 - [ ] Confidence indicators for complex operations (deferred from Phase 2.4)
@@ -315,7 +328,7 @@ This keeps the dashboard as a thin view layer over API calls, which is critical 
 - [ ] Quick action buttons (reload, restart, test config) with confirmation
 - [ ] Workflow trigger UI (setup-site, migrate-site) with SSE progress display
 - [ ] User and API key management pages (admin only)
-- [ ] Login page with 2FA support (if Phase 6.3 complete)
+- [ ] Login page with 2FA support (Phase 6.3 API complete)
 
 ### 7.4 Dashboard Design Principles
 - Read-heavy, action-light — complex operations belong in the AI interfaces
@@ -432,17 +445,25 @@ This is the architectural inflection point. Moving from one NGINX container to m
 - [x] Encryption service tests (12 tests)
 - [x] User service tests (24 tests)
 - [x] User endpoint/model tests (25 tests)
-- [x] Total: 420 unit tests
+- [x] MCP resource tests (26 tests)
+- [x] MCP tools tests (18 tests)
+- [x] Agent conversation flow tests (17 tests)
+- [x] API contract tests (20 tests)
+- [x] TOTP service tests (20 tests)
+- [x] Session service tests (13 tests)
+- [x] TOTP endpoint tests (11 tests)
+- [x] 2FA login flow tests (8 tests)
+- [x] Total: 642 unit tests (65.28% coverage)
 
 ### Integration Tests
 - [x] API endpoint tests with actual NGINX container
 - [x] SSL workflow tests with production Let's Encrypt
-- [ ] MCP protocol compliance tests (Phase 6.2)
+- [x] MCP protocol compliance tests (Phase 6.2)
 
-### Agent Tests (Phase 6.2)
-- [ ] Simulated agent conversation flows
-- [ ] Error recovery scenarios
-- [ ] Multi-step workflow tests
+### Agent Tests (Phase 6.2) — Complete
+- [x] Simulated agent conversation flows
+- [x] Error recovery scenarios
+- [x] Multi-step workflow tests
 
 ### CI/CD (Phase 6.1) — Complete
 - [x] GitHub Actions pipeline (lint + test + Docker build)

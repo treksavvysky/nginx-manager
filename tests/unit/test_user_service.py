@@ -139,10 +139,12 @@ class TestAuthentication:
         service.db.fetch_one = AsyncMock(return_value=self._make_user_row())
         service.db.update = AsyncMock(return_value=True)
 
-        auth_ctx = await service.authenticate("testuser", "SecurePass123!")
-        assert auth_ctx is not None
+        result = await service.authenticate("testuser", "SecurePass123!")
+        assert result is not None
+        auth_ctx, totp_enabled = result
         assert auth_ctx.user_id == "usr-test123"
         assert auth_ctx.auth_method == "user"
+        assert totp_enabled is False
 
     @pytest.mark.asyncio
     async def test_authenticate_wrong_password(self):

@@ -171,6 +171,7 @@ class User(BaseModel):
     password_changed_at: datetime | None = None
     failed_login_attempts: int = 0
     locked_until: datetime | None = None
+    totp_enabled: bool = False
 
     @property
     def is_locked(self) -> bool:
@@ -259,11 +260,18 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     """Response after successful login."""
 
-    access_token: str = Field(..., description="JWT access token")
+    access_token: str = Field(..., description="JWT access token (session or 2FA challenge token)")
     token_type: str = Field(default="bearer")
     expires_in: int = Field(..., description="Token lifetime in seconds")
     role: Role
     user: User
+    requires_2fa: bool = Field(default=False, description="True if 2FA verification is needed to complete login")
+    challenge_token: str | None = Field(
+        default=None, description="Short-lived challenge token for 2FA verification (only when requires_2fa=true)"
+    )
+    totp_setup_required: bool = Field(
+        default=False, description="True if 2FA enrollment is recommended/enforced for this role"
+    )
     suggestions: list[dict] = Field(
         default_factory=lambda: [
             {
@@ -301,3 +309,64 @@ class UserListResponse(BaseModel):
     users: list[User]
     total: int
     suggestions: list[dict] = Field(default_factory=list)
+
+
+# --- TOTP / 2FA Models (Phase 6.3) ---
+
+
+class TOTPEnrollResponse(BaseModel):
+    """Response after initiating TOTP enrollment."""
+
+    secret: str = Field(..., description="Base32-encoded TOTP secret (for manual entry)")
+    qr_code_data_uri: str = Field(..., description="QR code as data:image/png;base64,... for authenticator app")
+    backup_codes: list[str] = Field(..., description="One-time backup codes (store securely, shown only once)")
+    message: str = "Scan the QR code with your authenticator app, then confirm with a code."
+
+
+class TOTPConfirmRequest(BaseModel):
+    """Request to confirm TOTP enrollment with a verification code."""
+
+    totp_code: str = Field(..., min_length=6, max_length=6, description="6-digit TOTP code from authenticator app")
+
+
+class TOTPDisableRequest(BaseModel):
+    """Request to disable TOTP (requires password confirmation)."""
+
+    password: str = Field(..., description="Current password for confirmation")
+
+
+class TOTPVerifyRequest(BaseModel):
+    """Request to complete 2FA login with a TOTP code."""
+
+    challenge_token: str = Field(..., description="Challenge token received from login endpoint")
+    totp_code: str = Field(..., min_length=6, max_length=8, description="6-digit TOTP code or 8-char backup code")
+
+
+class TOTPStatusResponse(BaseModel):
+    """Response for checking 2FA status."""
+
+    enabled: bool = Field(..., description="Whether TOTP 2FA is currently enabled")
+    confirmed_at: datetime | None = Field(None, description="When 2FA was confirmed")
+    enforcement: str = Field(..., description="Enforcement level for this user's role: enforced, optional, or n/a")
+    backup_codes_remaining: int = Field(0, description="Number of unused backup codes")
+
+
+# --- Session Models (Phase 6.3) ---
+
+
+class SessionInfo(BaseModel):
+    """Information about an active session."""
+
+    id: str = Field(..., description="Session ID (JWT jti claim)")
+    created_at: datetime
+    expires_at: datetime
+    ip_address: str | None = None
+    user_agent: str | None = None
+    is_current: bool = Field(default=False, description="Whether this is the session making the request")
+
+
+class SessionListResponse(BaseModel):
+    """Response for listing active sessions."""
+
+    sessions: list[SessionInfo]
+    total: int

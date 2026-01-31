@@ -24,7 +24,7 @@ from starlette.responses import JSONResponse, Response
 from config import ensure_directories, settings
 from core.rate_limiter import limiter
 from core.request_logger import RequestLoggerMiddleware
-from endpoints import auth, certificates, events, gpt, nginx, sites, transactions, users, workflows
+from endpoints import auth, certificates, events, gpt, nginx, sessions, sites, totp, transactions, users, workflows
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -135,6 +135,8 @@ app.include_router(workflows.router)
 app.include_router(gpt.router)
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(totp.router)
+app.include_router(sessions.router)
 
 
 # Security headers middleware
