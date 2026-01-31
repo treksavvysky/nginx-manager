@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit ' + site.name if edit_mode else 'New Site' }} — NGINX Manager{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{% if edit_mode %}Edit {{ site.name }}{% else %}Create New Site{% endif %}</h1>
+</div>
+
+<div class="card" x-data="{
+  siteType: '{{ site.get('proxy_pass') and 'reverse_proxy' or 'static' if edit_mode and site else 'static' }}'
+}">
+  <form id="site-form"
+        {% if edit_mode %}
+        hx-put="/dashboard/sites/{{ site.name }}"
+        {% else %}
+        hx-post="/dashboard/sites"
+        {% endif %}
+        hx-target="#form-result"
+        hx-swap="innerHTML">
+
+    {% if edit_mode %}
+    <input type="hidden" name="edit_mode" value="true">
+    {% endif %}
+
+    {# ── Site Name ── #}
+    {% if not edit_mode %}
+    <div class="form-group">
+      <label for="name">Site Name</label>
+      <input type="text" id="name" name="name" required
+             placeholder="example.com"
+             pattern="[a-zA-Z0-9._-]+"
+             value="">
+      <div class="hint">Used as the config filename. Letters, numbers, dots, hyphens, underscores only.</div>
+    </div>
+    {% else %}
+    <input type="hidden" name="name" value="{{ site.name }}">
+    {% endif %}
+
+    {# ── Server Names ── #}
+    <div class="form-group">
+      <label for="server_names">Server Names</label>
+      <input type="text" id="server_names" name="server_names"
+             placeholder="example.com, www.example.com"
+             value="{% if edit_mode and site %}{{ site.get('server_names', []) | join(', ') }}{% endif %}">
+      <div class="hint">Comma-separated list of domains. Defaults to the site name if empty.</div>
+    </div>
+
+    {# ── Site Type ── #}
+    <div class="form-group">
+      <label for="site_type">Site Type</label>
+      <select id="site_type" name="site_type" x-model="siteType">
+        <option value="static">Static Site</option>
+        <option value="reverse_proxy">Reverse Proxy</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      {# ── Listen Port ── #}
+      <div class="form-group">
+        <label for="listen_port">Listen Port</label>
+        <input type="number" id="listen_port" name="listen_port"
+               min="1" max="65535"
+               value="{% if edit_mode and site %}{{ site.get('listen_ports', [80])[0] if site.get('listen_ports') else 80 }}{% else %}80{% endif %}">
+      </div>
+
+      {# ── Root Path (static) ── #}
+      <div class="form-group" x-show="siteType === 'static'">
+        <label for="root_path">Root Path</label>
+        <input type="text" id="root_path" name="root_path"
+               placeholder="/var/www/site"
+               value="{% if edit_mode and site %}{{ site.get('root_path', '') }}{% endif %}">
+      </div>
+
+      {# ── Proxy Pass (reverse proxy) ── #}
+      <div class="form-group" x-show="siteType === 'reverse_proxy'">
+        <label for="proxy_pass">Proxy Pass</label>
+        <input type="text" id="proxy_pass" name="proxy_pass"
+               placeholder="http://localhost:3000"
+               value="{% if edit_mode and site %}{{ site.get('proxy_pass', '') }}{% endif %}">
+      </div>
+    </div>
+
+    {# ── Auto-reload ── #}
+    <div class="form-group">
+      <div class="checkbox-group">
+        <input type="checkbox" id="auto_reload" name="auto_reload" checked>
+        <label for="auto_reload" style="margin-bottom: 0;">Reload NGINX after saving</label>
+      </div>
+    </div>
+
+    {# ── Dry-run result area ── #}
+    <div id="dry-run-result"></div>
+
+    {# ── Actions ── #}
+    <div class="form-actions">
+      <button type="button" class="btn"
+              hx-post="/dashboard/sites/validate"
+              hx-target="#dry-run-result"
+              hx-swap="innerHTML"
+              hx-include="#site-form">
+        <span class="htmx-indicator spinner"></span>
+        Validate
+      </button>
+      <button type="submit" class="btn btn-primary">
+        <span class="htmx-indicator spinner"></span>
+        {% if edit_mode %}Save Changes{% else %}Create Site{% endif %}
+      </button>
+      <a href="{% if edit_mode %}/dashboard/sites/{{ site.name }}{% else %}/dashboard/sites{% endif %}" class="btn">
+        Cancel
+      </a>
+    </div>
+  </form>
+
+  <div id="form-result" style="margin-top: 1rem;"></div>
+</div>
+{% endblock %}

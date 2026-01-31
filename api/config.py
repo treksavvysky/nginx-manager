@@ -175,6 +175,9 @@ class Settings(BaseSettings):
         description="Passphrase for private key encryption (min 16 chars recommended)",
     )
 
+    # Dashboard (Phase 7)
+    dashboard_enabled: bool = Field(default=True, alias="DASHBOARD_ENABLED", description="Enable the web dashboard")
+
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 

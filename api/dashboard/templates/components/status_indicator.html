@@ -1,0 +1,10 @@
+<span class="status-dot {{ health.status }}"></span>
+<span>NGINX: {{ health.status | capitalize }}</span>
+<br>
+<span>{{ health.enabled_sites }} site{{ 's' if health.enabled_sites != 1 else '' }} active</span>
+{% if health.disabled_sites > 0 %}
+<span>&middot; {{ health.disabled_sites }} disabled</span>
+{% endif %}
+{% if health.ssl_warnings > 0 %}
+<br><span style="color: var(--color-warning);">{{ health.ssl_warnings }} SSL warning{{ 's' if health.ssl_warnings != 1 else '' }}</span>
+{% endif %}

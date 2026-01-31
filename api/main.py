@@ -21,6 +21,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from fastapi.staticfiles import StaticFiles
+
 from config import ensure_directories, settings
 from core.rate_limiter import limiter
 from core.request_logger import RequestLoggerMiddleware
@@ -138,6 +140,13 @@ app.include_router(users.router)
 app.include_router(totp.router)
 app.include_router(sessions.router)
 
+# Dashboard (Phase 7)
+if settings.dashboard_enabled:
+    from dashboard import STATIC_DIR, create_dashboard_router
+
+    app.include_router(create_dashboard_router())
+    app.mount("/dashboard/static", StaticFiles(directory=str(STATIC_DIR)), name="dashboard-static")
+
 
 # Security headers middleware
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -145,11 +154,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         response = await call_next(request)
+        path = request.url.path
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Cache-Control"] = "no-store"
+
+        # Dashboard pages use SAMEORIGIN for HTMX fragment loading
+        if path.startswith("/dashboard/"):
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        else:
+            response.headers["X-Frame-Options"] = "DENY"
+
+        # Static assets can be cached; API and dashboard pages should not
+        if path.startswith("/dashboard/static/"):
+            response.headers["Cache-Control"] = "public, max-age=86400"
+        else:
+            response.headers["Cache-Control"] = "no-store"
+
         return response
 
 

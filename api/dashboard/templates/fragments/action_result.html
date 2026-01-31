@@ -1,0 +1,15 @@
+{% if result.success %}
+<div class="toast success" data-auto-dismiss>
+  {{ result.message }}
+  {% if result.get('reloaded') %}
+    &mdash; NGINX reloaded
+  {% endif %}
+  {% if result.get('transaction_id') %}
+    <span style="font-size: 0.75rem; opacity: 0.7;">({{ result.transaction_id[:8] }})</span>
+  {% endif %}
+</div>
+{% else %}
+<div class="toast error" data-auto-dismiss>
+  {{ result.message }}
+</div>
+{% endif %}

@@ -294,7 +294,7 @@ Before building a dashboard, the project needed CI/CD, expanded test coverage, a
 
 ## Phase 7: Web Dashboard
 
-**Status: Planned**
+**Status: In Progress**
 
 The dashboard serves three purposes that AI interfaces handle poorly: **observability** (glancing at system state without asking a question), **manual intervention** (a button is faster than a prompt when something is wrong), and **trust calibration** (new users need to see what the system is doing before trusting an AI agent).
 
@@ -304,19 +304,27 @@ The dashboard serves three purposes that AI interfaces handle poorly: **observab
 
 - **HTMX** handles page loads, form submissions, and live updates (polling/SSE)
 - **Alpine.js** handles local UI state (dropdowns, modals, filters, toggles)
-- **CodeMirror 6** for NGINX config viewing/editing with syntax highlighting
+- **highlight.js** for NGINX config syntax highlighting
 - **Chart.js or uPlot** for metrics visualizations (Phase 8 readiness)
 - **Jinja2 templates** served directly by FastAPI — no separate frontend build
 
 This keeps the dashboard as a thin view layer over API calls, which is critical for Phase 9 multi-server support. Every dashboard page should work by calling the same REST API that agents use.
 
 ### 7.1 Core Pages
-- [ ] FastAPI Jinja2 template infrastructure and static file serving
-- [ ] Base layout with navigation, auth state, and system status indicator
-- [ ] Site list page with status badges (enabled/disabled, SSL status, health)
-- [ ] Site detail page with parsed config display and quick actions
-- [ ] Site create/edit forms with real-time `?dry_run=true` validation
-- [ ] NGINX config viewer with CodeMirror 6 syntax highlighting
+**Status: Complete** — 654 tests, 13 new dashboard tests
+
+- [x] FastAPI Jinja2 template infrastructure and static file serving
+- [x] Base layout with navigation, auth state, and system status indicator
+- [x] Site list page with status badges (enabled/disabled, SSL status, health)
+- [x] Site detail page with parsed config display and quick actions (enable/disable/delete)
+- [x] Site create/edit forms with real-time dry-run validation
+- [x] NGINX config viewer with highlight.js syntax highlighting
+- [x] Login page with cookie-based JWT auth (HttpOnly, SameSite=Strict)
+- [x] HTMX fragment routes for inline actions and live status polling (30s interval)
+- [x] SecurityHeadersMiddleware adjusted (SAMEORIGIN for dashboard, cache headers for static assets)
+
+**New files**: `api/dashboard/` package — `__init__.py`, `router.py`, `dependencies.py`, `context.py`, 16 Jinja2 templates, CSS, JS, vendored htmx/alpine/highlight.js
+**New config**: `DASHBOARD_ENABLED` (default: true)
 
 ### 7.2 Monitoring Pages
 - [ ] System health dashboard (NGINX status, container health, disk usage)
@@ -453,7 +461,8 @@ This is the architectural inflection point. Moving from one NGINX container to m
 - [x] Session service tests (13 tests)
 - [x] TOTP endpoint tests (11 tests)
 - [x] 2FA login flow tests (8 tests)
-- [x] Total: 642 unit tests (65.28% coverage)
+- [x] Dashboard route tests (13 tests: pages, fragments, static assets, security headers)
+- [x] Total: 654 unit tests
 
 ### Integration Tests
 - [x] API endpoint tests with actual NGINX container

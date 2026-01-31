@@ -46,12 +46,13 @@ uv run ruff format api/ tests/       # Format code
 ## Architecture
 
 ```
-Client (AI Agents / REST API)
+Client (AI Agents / REST API / Web Dashboard)
          │
     FastAPI App (api/main.py)
          │
-    Endpoints (api/endpoints/)
-         │
+    ├── Endpoints (api/endpoints/)     ← REST API
+    ├── Dashboard (api/dashboard/)     ← HTMX web UI
+    │
     Core Logic (api/core/)
          │
     NGINX Container + Docker Compose
@@ -111,6 +112,13 @@ Client (AI Agents / REST API)
   - `api/mcp_server/resources.py` - Read-only resources (sites, certificates, health, events, transactions)
   - `api/mcp_server/tools.py` - Executable tools (site CRUD, NGINX control, SSL management, rollback, workflows)
   - `api/mcp_server/prompts.py` - Workflow templates (setup site, add SSL, diagnose connectivity)
+- `api/dashboard/` - Web dashboard (HTMX + Alpine.js + Jinja2, no SPA/build pipeline)
+  - `api/dashboard/__init__.py` - Dashboard router factory, Jinja2Templates setup, static/template paths
+  - `api/dashboard/router.py` - All dashboard routes: page views, HTMX fragment endpoints, login/logout, site CRUD actions
+  - `api/dashboard/dependencies.py` - Cookie-based JWT auth (HttpOnly, SameSite=Strict), HTMX detection helper
+  - `api/dashboard/context.py` - Shared template context builders (auth state, health summary, nav state)
+  - `api/dashboard/templates/` - Jinja2 templates (base layout, 4 pages, 5 fragments, 6 components)
+  - `api/dashboard/static/` - CSS, JS, vendored libraries (htmx, Alpine.js, highlight.js)
 
 **Docker setup:**
 - `docker/compose/dev.yml` - Development with hot reload, volumes mounted
@@ -188,6 +196,7 @@ Environment variables managed via Pydantic BaseSettings in `api/config.py`:
 - `TOTP_INTERVAL` - TOTP code rotation interval in seconds (default: 30)
 - `TOTP_CHALLENGE_EXPIRY_MINUTES` - 2FA challenge token lifetime (default: 5)
 - `SESSION_CLEANUP_INTERVAL_HOURS` - Interval for expired session cleanup (default: 24)
+- `DASHBOARD_ENABLED` - Enable the web dashboard at `/dashboard/` (default: true)
 
 ## API Usage Examples
 
@@ -291,6 +300,7 @@ curl "http://localhost:8000/gpt/openapi.json?server_url=https://your-domain.com"
 - **MCP Server**: Native Model Context Protocol support for Claude and other AI agents
 - **Agent Workflows**: Compound operations (setup-site, migrate-site) with checkpoint-based rollback and SSE progress streaming
 - **Custom GPT Integration**: GPT-compatible OpenAPI schema generator with description truncation, tag filtering, and system instruction templates
+- **Web Dashboard**: Server-rendered HTMX + Alpine.js dashboard for site management, config viewing, and system monitoring
 
 ## MCP Server
 
@@ -452,11 +462,38 @@ curl -X POST http://localhost:8000/auth/2fa/confirm \
 - **Makefile**: `make lint`, `make format`, `make test`, `make test-cov`, `make ci`, `make dev`, `make down`
 - **Ruff config**: in `pyproject.toml` — target Python 3.12, line-length 120, select rules (E, W, F, I, N, UP, B, SIM, RUF)
 - **Test conftest** (`tests/conftest.py`): disables `AUTH_ENABLED` for unit tests so they don't require auth credentials
-- **Coverage threshold**: 45% minimum (`--cov-fail-under=45`), current: 65.28% with 642 tests
-- **Dependencies**: `pyotp>=2.9.0` (TOTP), `qrcode[pil]>=8.0` (QR codes) added in Phase 6.3
+- **Coverage threshold**: 45% minimum (`--cov-fail-under=45`), current: 654 tests
+- **Dependencies**: `pyotp>=2.9.0` (TOTP), `qrcode[pil]>=8.0` (QR codes) added in Phase 6.3, `highlight.js` vendored for dashboard
+
+## Web Dashboard (Phase 7.1)
+
+Server-rendered dashboard at `/dashboard/` using HTMX + Alpine.js + Jinja2. No SPA, no build pipeline.
+
+- **Site management**: List, detail, create, edit, enable/disable, delete — all with HTMX inline actions
+- **Config viewer**: NGINX syntax highlighting via highlight.js
+- **Dry-run validation**: Preview generated config before creating/updating sites
+- **Live status**: NGINX health indicator polled every 30s via HTMX fragment
+- **Auth**: Cookie-based JWT when `AUTH_ENABLED=true`, permissive access when disabled. 2FA-enabled accounts must use the API.
+- **Dashboard URL**: `http://localhost:8000/dashboard/`
+
+### Dashboard Routes
+- `GET /dashboard/` — redirect to site list
+- `GET /dashboard/sites` — site list page (full page or HTMX fragment)
+- `GET /dashboard/sites/new` — create site form
+- `GET /dashboard/sites/{name}` — site detail with config viewer
+- `GET /dashboard/sites/{name}/edit` — edit site form
+- `POST /dashboard/sites` — create site action
+- `PUT /dashboard/sites/{name}` — update site action
+- `POST /dashboard/sites/{name}/enable` — enable site (HTMX)
+- `POST /dashboard/sites/{name}/disable` — disable site (HTMX)
+- `DELETE /dashboard/sites/{name}` — delete site (HTMX)
+- `POST /dashboard/sites/validate` — dry-run validation (HTMX)
+- `GET /dashboard/fragments/status` — health status fragment (polled)
+- `GET/POST /dashboard/login` — login page and action
+- `POST /dashboard/logout` — logout action
 
 ## Current Limitations
 
-- No web dashboard (Phase 7, API only)
 - No mypy type checking (deferred — insufficient type annotations across codebase)
 - 2FA enforcement is advisory only (soft warnings, does not block login)
+- Dashboard does not support 2FA login flow (2FA users must use the API)

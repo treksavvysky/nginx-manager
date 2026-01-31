@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}NGINX Manager{% endblock %}</title>
+  <link rel="stylesheet" href="/dashboard/static/css/dashboard.css">
+  <link rel="stylesheet" href="/dashboard/static/vendor/highlight-github-dark.min.css">
+  {% block head %}{% endblock %}
+</head>
+<body hx-boost="true">
+  <div class="layout">
+    {% include "components/nav.html" %}
+    <main class="main">
+      <div id="toast-container">
+        {% block toasts %}{% endblock %}
+      </div>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <script src="/dashboard/static/vendor/htmx.min.js"></script>
+  <script src="/dashboard/static/vendor/alpine.min.js" defer></script>
+  <script src="/dashboard/static/js/dashboard.js"></script>
+  <script src="/dashboard/static/vendor/highlight.min.js"></script>
+  <script src="/dashboard/static/vendor/highlight-nginx.min.js"></script>
+  <script src="/dashboard/static/js/config-editor.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

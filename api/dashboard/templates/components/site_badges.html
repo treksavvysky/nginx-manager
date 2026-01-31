@@ -1,0 +1,35 @@
+{# Badge macros for site status indicators #}
+
+{% macro enabled_badge(enabled) %}
+{% if enabled %}
+<span class="badge badge-enabled">Enabled</span>
+{% else %}
+<span class="badge badge-disabled">Disabled</span>
+{% endif %}
+{% endmacro %}
+
+{% macro ssl_badge(ssl_enabled) %}
+{% if ssl_enabled %}
+<span class="badge badge-ssl">SSL</span>
+{% else %}
+<span class="badge badge-no-ssl">No SSL</span>
+{% endif %}
+{% endmacro %}
+
+{% macro type_badge(site) %}
+{% if site.get('proxy_pass') %}
+<span class="badge badge-proxy">Proxy</span>
+{% else %}
+<span class="badge badge-static">Static</span>
+{% endif %}
+{% endmacro %}
+
+{% macro status_badge(status) %}
+{% if status == 'valid' %}
+<span class="badge badge-valid">Valid</span>
+{% elif status == 'invalid' %}
+<span class="badge badge-invalid">Invalid</span>
+{% else %}
+<span class="badge badge-untested">Untested</span>
+{% endif %}
+{% endmacro %}

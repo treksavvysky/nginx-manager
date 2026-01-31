@@ -1,0 +1,60 @@
+{% import "components/site_badges.html" as badges %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Server Names</th>
+        <th>Type</th>
+        <th>Port</th>
+        <th>Status</th>
+        <th>SSL</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for site in sites %}
+      <tr id="site-row-{{ site.name }}">
+        <td>
+          <a href="/dashboard/sites/{{ site.name }}">{{ site.name }}</a>
+        </td>
+        <td>
+          {% set names = site.get('server_names', []) %}
+          {% if names %}
+            {{ names | join(', ') }}
+          {% else %}
+            {{ site.get('server_name', '—') }}
+          {% endif %}
+        </td>
+        <td>{{ badges.type_badge(site) }}</td>
+        <td>
+          {% set ports = site.get('listen_ports', []) %}
+          {{ ports | join(', ') if ports else '80' }}
+        </td>
+        <td>{{ badges.enabled_badge(site.get('enabled', true)) }}</td>
+        <td>{{ badges.ssl_badge(site.get('ssl_enabled', false)) }}</td>
+        <td class="actions">
+          <a href="/dashboard/sites/{{ site.name }}" class="btn btn-sm">View</a>
+          {% if site.get('enabled', true) %}
+          <button class="btn btn-sm"
+                  hx-post="/dashboard/sites/{{ site.name }}/disable"
+                  hx-target="#toast-container"
+                  hx-swap="beforeend"
+                  hx-on::after-request="if(event.detail.successful) htmx.ajax('GET', '/dashboard/sites', {target: '#site-list', swap: 'innerHTML'})">
+            Disable
+          </button>
+          {% else %}
+          <button class="btn btn-sm"
+                  hx-post="/dashboard/sites/{{ site.name }}/enable"
+                  hx-target="#toast-container"
+                  hx-swap="beforeend"
+                  hx-on::after-request="if(event.detail.successful) htmx.ajax('GET', '/dashboard/sites', {target: '#site-list', swap: 'innerHTML'})">
+            Enable
+          </button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

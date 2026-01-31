@@ -1,0 +1,19 @@
+{% if result.success %}
+<div class="dry-run-result valid">
+  <h3>Validation Passed</h3>
+  <p>{{ result.message }} ({{ result.lines }} lines)</p>
+  {% if result.generated_config %}
+  <details class="dry-run-config">
+    <summary>Preview generated configuration</summary>
+    <div class="config-viewer" style="margin-top: 0.5rem;">
+      <pre>{{ result.generated_config }}</pre>
+    </div>
+  </details>
+  {% endif %}
+</div>
+{% else %}
+<div class="dry-run-result invalid">
+  <h3>Validation Failed</h3>
+  <p>{{ result.message }}</p>
+</div>
+{% endif %}

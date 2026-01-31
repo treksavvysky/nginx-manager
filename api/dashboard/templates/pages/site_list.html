@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Sites — NGINX Manager{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Sites</h1>
+  <a href="/dashboard/sites/new" class="btn btn-primary">New Site</a>
+</div>
+
+<div id="site-list">
+{% if sites %}
+  {% include "fragments/site_table.html" %}
+{% else %}
+  {% include "components/empty_state.html" %}
+{% endif %}
+</div>
+{% endblock %}

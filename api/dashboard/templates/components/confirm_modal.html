@@ -1,0 +1,19 @@
+{# Alpine.js confirmation modal — usage:
+   Wrap in x-data="{ showConfirm: false, confirmAction: '' }"
+   Trigger with @click="showConfirm = true; confirmAction = '/dashboard/sites/NAME'"
+#}
+<template x-if="showConfirm">
+  <div class="modal-backdrop" @click.self="showConfirm = false">
+    <div class="modal">
+      <h3 x-text="confirmTitle || 'Confirm Action'"></h3>
+      <p x-text="confirmMessage || 'Are you sure? This action cannot be undone.'"></p>
+      <div class="modal-actions">
+        <button class="btn" @click="showConfirm = false">Cancel</button>
+        <button class="btn btn-danger"
+                @click="htmx.ajax('DELETE', confirmAction, {target: '#toast-container', swap: 'beforeend'}); showConfirm = false">
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</template>

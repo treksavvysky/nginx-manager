@@ -1,0 +1,31 @@
+<nav class="nav">
+  <div class="nav-brand">
+    NGINX Manager
+    <small>Dashboard</small>
+  </div>
+
+  <div class="nav-section">Management</div>
+  <a href="/dashboard/sites" {% if current_path in ['/dashboard/', '/dashboard/sites'] %}class="active"{% endif %}>
+    Sites
+  </a>
+  <a href="/dashboard/sites/new" {% if current_path == '/dashboard/sites/new' %}class="active"{% endif %}>
+    + New Site
+  </a>
+
+  <div class="nav-section">System</div>
+  <a href="/docs" target="_blank">API Docs</a>
+
+  <div class="nav-footer">
+    <div class="status-summary"
+         hx-get="/dashboard/fragments/status"
+         hx-trigger="every 30s"
+         hx-swap="innerHTML">
+      {% include "components/status_indicator.html" %}
+    </div>
+    {% if auth_enabled and auth and auth.auth_method != 'none' %}
+    <form method="post" action="/dashboard/logout" style="margin-top: 0.5rem;">
+      <button type="submit" class="btn btn-sm" style="width: 100%;">Logout</button>
+    </form>
+    {% endif %}
+  </div>
+</nav>

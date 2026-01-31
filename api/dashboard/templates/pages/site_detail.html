@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% import "components/site_badges.html" as badges %}
+{% block title %}{{ site.name if site else 'Not Found' }} — NGINX Manager{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="toast error">{{ error }}</div>
+<a href="/dashboard/sites" class="btn">Back to Sites</a>
+{% elif site %}
+
+<div x-data="{ showConfirm: false, confirmTitle: '', confirmMessage: '', confirmAction: '' }">
+
+<div class="page-header">
+  <div>
+    <h1>{{ site.name }}</h1>
+    <div style="margin-top: 0.25rem;">
+      {{ badges.enabled_badge(site.get('enabled', true)) }}
+      {{ badges.ssl_badge(site.get('ssl_enabled', false)) }}
+      {{ badges.type_badge(site) }}
+    </div>
+  </div>
+  <div class="actions">
+    <a href="/dashboard/sites/{{ site.name }}/edit" class="btn">Edit</a>
+    {% if site.get('enabled', true) %}
+    <button class="btn"
+            hx-post="/dashboard/sites/{{ site.name }}/disable"
+            hx-target="#toast-container"
+            hx-swap="beforeend"
+            hx-on::after-request="if(event.detail.successful) setTimeout(function(){ location.reload(); }, 500)">
+      Disable
+    </button>
+    {% else %}
+    <button class="btn"
+            hx-post="/dashboard/sites/{{ site.name }}/enable"
+            hx-target="#toast-container"
+            hx-swap="beforeend"
+            hx-on::after-request="if(event.detail.successful) setTimeout(function(){ location.reload(); }, 500)">
+      Enable
+    </button>
+    {% endif %}
+    <button class="btn btn-danger"
+            @click="showConfirm = true; confirmTitle = 'Delete {{ site.name }}'; confirmMessage = 'This will permanently remove the site configuration. This cannot be undone.'; confirmAction = '/dashboard/sites/{{ site.name }}'">
+      Delete
+    </button>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+{# ── Details Card ── #}
+<div class="card">
+  <div class="card-header">
+    <h2>Configuration</h2>
+  </div>
+  <div class="detail-grid">
+    <div class="detail-item">
+      <label>Server Names</label>
+      <span>
+        {% set names = site.get('server_names', []) %}
+        {% if names %}{{ names | join(', ') }}{% else %}{{ site.get('server_name', '—') }}{% endif %}
+      </span>
+    </div>
+    <div class="detail-item">
+      <label>Listen Ports</label>
+      <span>
+        {% set ports = site.get('listen_ports', []) %}
+        {{ ports | join(', ') if ports else '80' }}
+      </span>
+    </div>
+    <div class="detail-item">
+      <label>Type</label>
+      <span>{% if site.get('proxy_pass') %}Reverse Proxy{% else %}Static{% endif %}</span>
+    </div>
+    {% if site.get('root_path') %}
+    <div class="detail-item">
+      <label>Root Path</label>
+      <span>{{ site.root_path }}</span>
+    </div>
+    {% endif %}
+    {% if site.get('proxy_pass') %}
+    <div class="detail-item">
+      <label>Proxy Pass</label>
+      <span>{{ site.proxy_pass }}</span>
+    </div>
+    {% endif %}
+    <div class="detail-item">
+      <label>File</label>
+      <span>{{ site.get('file_path', '—') }}</span>
+    </div>
+    {% if site.get('file_size') %}
+    <div class="detail-item">
+      <label>File Size</label>
+      <span>{{ site.file_size }} bytes</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Locations ── #}
+{% set locations = site.get('locations', []) %}
+{% if locations %}
+<div class="card">
+  <div class="card-header">
+    <h2>Locations</h2>
+  </div>
+  <div class="table-wrap" style="box-shadow: none; border: none;">
+    <table>
+      <thead>
+        <tr>
+          <th>Path</th>
+          <th>Proxy Pass</th>
+          <th>Root</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for loc in locations %}
+        <tr>
+          <td><code>{{ loc.get('path', '/') }}</code></td>
+          <td>{{ loc.get('proxy_pass', '—') }}</td>
+          <td>{{ loc.get('root', '—') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# ── SSL Certificate Info ── #}
+{% if site.get('ssl_enabled') or site.get('certificate') %}
+<div class="card">
+  <div class="card-header">
+    <h2>SSL Certificate</h2>
+  </div>
+  {% set cert = site.get('certificate') %}
+  {% if cert %}
+  <div class="detail-grid">
+    <div class="detail-item">
+      <label>Domain</label>
+      <span>{{ cert.get('domain', '—') }}</span>
+    </div>
+    <div class="detail-item">
+      <label>Status</label>
+      <span>{{ cert.get('status', '—') }}</span>
+    </div>
+    <div class="detail-item">
+      <label>Expires</label>
+      <span>{{ cert.get('not_after', '—') }}</span>
+    </div>
+    <div class="detail-item">
+      <label>Issuer</label>
+      <span>{{ cert.get('issuer', '—') }}</span>
+    </div>
+  </div>
+  {% else %}
+  <p style="color: var(--color-text-secondary);">SSL is enabled but no certificate details are available.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ── Raw Config ── #}
+{% if raw_config %}
+<div class="card">
+  <div class="card-header">
+    <h2>NGINX Configuration</h2>
+  </div>
+  {% include "components/config_viewer.html" %}
+</div>
+{% endif %}
+
+{# ── Delete Confirmation Modal ── #}
+{% include "components/confirm_modal.html" %}
+
+</div>{# end x-data #}
+
+{% endif %}
+{% endblock %}
