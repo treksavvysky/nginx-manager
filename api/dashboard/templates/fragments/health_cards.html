@@ -1,0 +1,111 @@
+{% import "components/monitoring_badges.html" as mbadges %}
+
+<div class="health-grid">
+  {# NGINX Status Card #}
+  <div class="card">
+    <div class="card-header">
+      <h2>NGINX Status</h2>
+      {{ mbadges.health_status_badge(health_detail.overall_status) }}
+    </div>
+    <div class="detail-grid">
+      <div class="detail-item">
+        <label>Status</label>
+        <span>
+          <span class="status-dot {{ 'healthy' if health_detail.nginx.running else 'unhealthy' }}"></span>
+          {{ 'Running' if health_detail.nginx.running else 'Stopped' }}
+        </span>
+      </div>
+      <div class="detail-item">
+        <label>Uptime</label>
+        <span class="uptime-text">{{ health_detail.nginx.uptime_human }}</span>
+      </div>
+      <div class="detail-item">
+        <label>Version</label>
+        <span>{{ health_detail.nginx.version or '—' }}</span>
+      </div>
+      <div class="detail-item">
+        <label>Container ID</label>
+        <span style="font-family: var(--font-mono); font-size: 0.82rem;">{{ health_detail.nginx.container_id[:12] if health_detail.nginx.container_id else '—' }}</span>
+      </div>
+      {% if health_detail.nginx.pid %}
+      <div class="detail-item">
+        <label>PID</label>
+        <span>{{ health_detail.nginx.pid }}</span>
+      </div>
+      {% endif %}
+      <div class="detail-item">
+        <label>Health Check</label>
+        <span>{{ health_detail.nginx.health_status | capitalize }}</span>
+      </div>
+    </div>
+  </div>
+
+  {# Sites Overview Card #}
+  <div class="card">
+    <div class="card-header">
+      <h2>Sites</h2>
+      <a href="/dashboard/sites" class="btn btn-sm">View All</a>
+    </div>
+    <div class="stat-row">
+      <div class="stat-card">
+        <div class="stat-value">{{ health_detail.sites.total }}</div>
+        <div class="stat-label">Total</div>
+      </div>
+      <div class="stat-card stat-success">
+        <div class="stat-value">{{ health_detail.sites.enabled }}</div>
+        <div class="stat-label">Enabled</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{ health_detail.sites.disabled }}</div>
+        <div class="stat-label">Disabled</div>
+      </div>
+    </div>
+  </div>
+
+  {# SSL Certificates Card #}
+  <div class="card">
+    <div class="card-header">
+      <h2>SSL Certificates</h2>
+      <a href="/dashboard/certificates" class="btn btn-sm">View All</a>
+    </div>
+    <div class="stat-row">
+      <div class="stat-card">
+        <div class="stat-value">{{ health_detail.ssl.total }}</div>
+        <div class="stat-label">Total</div>
+      </div>
+      <div class="stat-card stat-success">
+        <div class="stat-value">{{ health_detail.ssl.valid }}</div>
+        <div class="stat-label">Valid</div>
+      </div>
+      <div class="stat-card stat-warning">
+        <div class="stat-value">{{ health_detail.ssl.expiring_soon }}</div>
+        <div class="stat-label">Expiring</div>
+      </div>
+      <div class="stat-card stat-danger">
+        <div class="stat-value">{{ health_detail.ssl.expired }}</div>
+        <div class="stat-label">Expired</div>
+      </div>
+    </div>
+  </div>
+
+  {# Security Card #}
+  <div class="card">
+    <div class="card-header">
+      <h2>Security</h2>
+      {% if health_detail.security_warnings %}
+      <span class="badge badge-warning">{{ health_detail.security_warnings | length }} warning{{ 's' if health_detail.security_warnings | length != 1 }}</span>
+      {% else %}
+      <span class="badge badge-enabled">OK</span>
+      {% endif %}
+    </div>
+    {% if health_detail.security_warnings %}
+    <ul class="warning-list">
+      {% for warning in health_detail.security_warnings %}
+      <li>{{ warning.message if warning is mapping else warning }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p style="color: var(--color-text-secondary); font-size: 0.9rem;">No security warnings.</p>
+    {% endif %}
+  </div>
+</div>

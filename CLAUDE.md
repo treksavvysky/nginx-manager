@@ -117,7 +117,7 @@ Client (AI Agents / REST API / Web Dashboard)
   - `api/dashboard/router.py` - All dashboard routes: page views, HTMX fragment endpoints, login/logout, site CRUD actions
   - `api/dashboard/dependencies.py` - Cookie-based JWT auth (HttpOnly, SameSite=Strict), HTMX detection helper
   - `api/dashboard/context.py` - Shared template context builders (auth state, health summary, nav state)
-  - `api/dashboard/templates/` - Jinja2 templates (base layout, 4 pages, 5 fragments, 6 components)
+  - `api/dashboard/templates/` - Jinja2 templates (base layout, 8 pages, 11 fragments, 7 components)
   - `api/dashboard/static/` - CSS, JS, vendored libraries (htmx, Alpine.js, highlight.js)
 
 **Docker setup:**
@@ -300,7 +300,7 @@ curl "http://localhost:8000/gpt/openapi.json?server_url=https://your-domain.com"
 - **MCP Server**: Native Model Context Protocol support for Claude and other AI agents
 - **Agent Workflows**: Compound operations (setup-site, migrate-site) with checkpoint-based rollback and SSE progress streaming
 - **Custom GPT Integration**: GPT-compatible OpenAPI schema generator with description truncation, tag filtering, and system instruction templates
-- **Web Dashboard**: Server-rendered HTMX + Alpine.js dashboard for site management, config viewing, and system monitoring
+- **Web Dashboard**: Server-rendered HTMX + Alpine.js dashboard for site management, monitoring, config viewing, and system health
 
 ## MCP Server
 
@@ -462,21 +462,22 @@ curl -X POST http://localhost:8000/auth/2fa/confirm \
 - **Makefile**: `make lint`, `make format`, `make test`, `make test-cov`, `make ci`, `make dev`, `make down`
 - **Ruff config**: in `pyproject.toml` — target Python 3.12, line-length 120, select rules (E, W, F, I, N, UP, B, SIM, RUF)
 - **Test conftest** (`tests/conftest.py`): disables `AUTH_ENABLED` for unit tests so they don't require auth credentials
-- **Coverage threshold**: 45% minimum (`--cov-fail-under=45`), current: 654 tests
+- **Coverage threshold**: 45% minimum (`--cov-fail-under=45`), current: 673 tests
 - **Dependencies**: `pyotp>=2.9.0` (TOTP), `qrcode[pil]>=8.0` (QR codes) added in Phase 6.3, `highlight.js` vendored for dashboard
 
-## Web Dashboard (Phase 7.1)
+## Web Dashboard (Phase 7)
 
 Server-rendered dashboard at `/dashboard/` using HTMX + Alpine.js + Jinja2. No SPA, no build pipeline.
 
 - **Site management**: List, detail, create, edit, enable/disable, delete — all with HTMX inline actions
+- **Monitoring pages**: System health dashboard (polled every 15s), certificate overview with expiry tracking, event log with severity/category filtering, transaction history with diff viewer and one-click rollback
 - **Config viewer**: NGINX syntax highlighting via highlight.js
 - **Dry-run validation**: Preview generated config before creating/updating sites
 - **Live status**: NGINX health indicator polled every 30s via HTMX fragment
 - **Auth**: Cookie-based JWT when `AUTH_ENABLED=true`, permissive access when disabled. 2FA-enabled accounts must use the API.
 - **Dashboard URL**: `http://localhost:8000/dashboard/`
 
-### Dashboard Routes
+### Dashboard Routes — Site Management
 - `GET /dashboard/` — redirect to site list
 - `GET /dashboard/sites` — site list page (full page or HTMX fragment)
 - `GET /dashboard/sites/new` — create site form
@@ -488,7 +489,18 @@ Server-rendered dashboard at `/dashboard/` using HTMX + Alpine.js + Jinja2. No S
 - `POST /dashboard/sites/{name}/disable` — disable site (HTMX)
 - `DELETE /dashboard/sites/{name}` — delete site (HTMX)
 - `POST /dashboard/sites/validate` — dry-run validation (HTMX)
-- `GET /dashboard/fragments/status` — health status fragment (polled)
+
+### Dashboard Routes — Monitoring
+- `GET /dashboard/health` — system health dashboard (NGINX status, sites, SSL, security warnings)
+- `GET /dashboard/certificates` — certificate overview with expiry timeline
+- `GET /dashboard/events` — event log with severity/category filtering and pagination
+- `GET /dashboard/transactions` — transaction history with status/operation filtering
+- `GET /dashboard/fragments/health-cards` — health cards fragment (polled every 15s)
+- `GET /dashboard/transactions/{id}/detail` — transaction detail with diff viewer (HTMX)
+- `POST /dashboard/transactions/{id}/rollback` — one-click rollback action (HTMX)
+
+### Dashboard Routes — System
+- `GET /dashboard/fragments/status` — health status fragment (polled every 30s)
 - `GET/POST /dashboard/login` — login page and action
 - `POST /dashboard/logout` — logout action
 

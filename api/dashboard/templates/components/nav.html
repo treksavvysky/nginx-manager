@@ -12,6 +12,20 @@
     + New Site
   </a>
 
+  <div class="nav-section">Monitoring</div>
+  <a href="/dashboard/health" {% if current_path == '/dashboard/health' %}class="active"{% endif %}>
+    Health
+  </a>
+  <a href="/dashboard/certificates" {% if current_path == '/dashboard/certificates' %}class="active"{% endif %}>
+    Certificates
+  </a>
+  <a href="/dashboard/events" {% if current_path == '/dashboard/events' %}class="active"{% endif %}>
+    Events
+  </a>
+  <a href="/dashboard/transactions" {% if current_path == '/dashboard/transactions' %}class="active"{% endif %}>
+    Transactions
+  </a>
+
   <div class="nav-section">System</div>
   <a href="/docs" target="_blank">API Docs</a>
 

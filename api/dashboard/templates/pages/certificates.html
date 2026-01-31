@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}SSL Certificates — NGINX Manager{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>SSL Certificates</h1>
+</div>
+
+<div class="stat-row">
+  <div class="stat-card">
+    <div class="stat-value">{{ cert_summary.total }}</div>
+    <div class="stat-label">Total</div>
+  </div>
+  <div class="stat-card stat-success">
+    <div class="stat-value">{{ cert_summary.valid }}</div>
+    <div class="stat-label">Valid</div>
+  </div>
+  <div class="stat-card stat-warning">
+    <div class="stat-value">{{ cert_summary.expiring_soon }}</div>
+    <div class="stat-label">Expiring Soon</div>
+  </div>
+  <div class="stat-card stat-danger">
+    <div class="stat-value">{{ cert_summary.expired }}</div>
+    <div class="stat-label">Expired</div>
+  </div>
+</div>
+
+<div id="cert-list">
+  {% if certificates %}
+  {% include "fragments/cert_table.html" %}
+  {% else %}
+  <div class="empty-state">
+    <h2>No certificates</h2>
+    <p>SSL certificates will appear here when requested via the API or MCP tools.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

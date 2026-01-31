@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Transaction History — NGINX Manager{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Transaction History</h1>
+</div>
+
+<div class="filter-bar">
+  <select onchange="window.location.href='/dashboard/transactions?status=' + this.value + '{% if txn_filters.operation %}&operation={{ txn_filters.operation }}{% endif %}'">
+    <option value="" {% if not txn_filters.status %}selected{% endif %}>All Statuses</option>
+    <option value="completed" {% if txn_filters.status == 'completed' %}selected{% endif %}>Completed</option>
+    <option value="failed" {% if txn_filters.status == 'failed' %}selected{% endif %}>Failed</option>
+    <option value="rolled_back" {% if txn_filters.status == 'rolled_back' %}selected{% endif %}>Rolled Back</option>
+    <option value="in_progress" {% if txn_filters.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+    <option value="pending" {% if txn_filters.status == 'pending' %}selected{% endif %}>Pending</option>
+  </select>
+
+  <select onchange="window.location.href='/dashboard/transactions?operation=' + this.value + '{% if txn_filters.status %}&status={{ txn_filters.status }}{% endif %}'">
+    <option value="" {% if not txn_filters.operation %}selected{% endif %}>All Operations</option>
+    <option value="site_create" {% if txn_filters.operation == 'site_create' %}selected{% endif %}>Site Create</option>
+    <option value="site_update" {% if txn_filters.operation == 'site_update' %}selected{% endif %}>Site Update</option>
+    <option value="site_delete" {% if txn_filters.operation == 'site_delete' %}selected{% endif %}>Site Delete</option>
+    <option value="site_enable" {% if txn_filters.operation == 'site_enable' %}selected{% endif %}>Site Enable</option>
+    <option value="site_disable" {% if txn_filters.operation == 'site_disable' %}selected{% endif %}>Site Disable</option>
+    <option value="nginx_reload" {% if txn_filters.operation == 'nginx_reload' %}selected{% endif %}>NGINX Reload</option>
+    <option value="ssl_install" {% if txn_filters.operation == 'ssl_install' %}selected{% endif %}>SSL Install</option>
+    <option value="ssl_renew" {% if txn_filters.operation == 'ssl_renew' %}selected{% endif %}>SSL Renew</option>
+    <option value="rollback" {% if txn_filters.operation == 'rollback' %}selected{% endif %}>Rollback</option>
+  </select>
+</div>
+
+<div id="txn-list">
+  {% include "fragments/transaction_table.html" %}
+</div>
+{% endblock %}

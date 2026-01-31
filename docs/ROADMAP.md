@@ -294,7 +294,7 @@ Before building a dashboard, the project needed CI/CD, expanded test coverage, a
 
 ## Phase 7: Web Dashboard
 
-**Status: In Progress**
+**Status: In Progress** — 673 tests
 
 The dashboard serves three purposes that AI interfaces handle poorly: **observability** (glancing at system state without asking a question), **manual intervention** (a button is faster than a prompt when something is wrong), and **trust calibration** (new users need to see what the system is doing before trusting an AI agent).
 
@@ -327,10 +327,18 @@ This keeps the dashboard as a thin view layer over API calls, which is critical 
 **New config**: `DASHBOARD_ENABLED` (default: true)
 
 ### 7.2 Monitoring Pages
-- [ ] System health dashboard (NGINX status, container health, disk usage)
-- [ ] Certificate overview with expiry timeline and renewal status
-- [ ] Event log viewer with filtering (by type, date range, site, user)
-- [ ] Transaction history with diff viewer and one-click rollback
+**Status: Complete** — 673 tests, 18 new monitoring tests
+
+- [x] System health dashboard (NGINX status, container health, site counts, SSL summary, security warnings)
+- [x] Certificate overview with status badges, expiry tracking, and urgency-sorted table
+- [x] Event log viewer with severity/category filtering, counts, and pagination
+- [x] Transaction history with diff viewer, expandable detail rows, and one-click rollback
+- [x] Auto-refreshing health cards (HTMX polling every 15s)
+- [x] Jinja2 badge macros for cert status, event severity, transaction status, operation type
+- [x] Filter state preserved in URL via `hx-push-url` for bookmarkable filters
+
+**New files**: 11 Jinja2 templates (4 pages, 6 fragments, 1 component), `tests/unit/test_dashboard_monitoring.py`
+**New routes**: `GET /dashboard/health`, `GET /dashboard/certificates`, `GET /dashboard/events`, `GET /dashboard/transactions`, `GET /dashboard/fragments/health-cards`, `GET /dashboard/transactions/{id}/detail`, `POST /dashboard/transactions/{id}/rollback`
 
 ### 7.3 Operations
 - [ ] Quick action buttons (reload, restart, test config) with confirmation
@@ -462,7 +470,8 @@ This is the architectural inflection point. Moving from one NGINX container to m
 - [x] TOTP endpoint tests (11 tests)
 - [x] 2FA login flow tests (8 tests)
 - [x] Dashboard route tests (13 tests: pages, fragments, static assets, security headers)
-- [x] Total: 654 unit tests
+- [x] Dashboard monitoring tests (18 tests: health, certificates, events, transactions, rollback, navigation)
+- [x] Total: 673 unit tests
 
 ### Integration Tests
 - [x] API endpoint tests with actual NGINX container

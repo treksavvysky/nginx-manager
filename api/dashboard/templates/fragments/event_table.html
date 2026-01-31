@@ -1,0 +1,68 @@
+{% import "components/monitoring_badges.html" as mbadges %}
+
+{% if events %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Severity</th>
+        <th>Category</th>
+        <th>Action</th>
+        <th>Message</th>
+        <th>Resource</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for evt in events %}
+      <tr>
+        <td style="white-space: nowrap; font-size: 0.82rem; color: var(--color-text-secondary);">
+          {{ evt.timestamp.strftime('%Y-%m-%d %H:%M:%S') if evt.timestamp else '—' }}
+        </td>
+        <td>{{ mbadges.severity_badge(evt.severity) }}</td>
+        <td>
+          <span class="badge badge-proxy">{{ evt.category | title }}</span>
+        </td>
+        <td>{{ evt.action }}</td>
+        <td style="max-width: 350px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          {{ evt.message }}
+        </td>
+        <td>
+          {% if evt.resource_type and evt.resource_id %}
+          <span style="font-size: 0.82rem;">{{ evt.resource_type }}: {{ evt.resource_id }}</span>
+          {% elif evt.transaction_id %}
+          <span style="font-size: 0.82rem; font-family: var(--font-mono);">{{ evt.transaction_id[:8] }}...</span>
+          {% else %}
+          —
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if event_has_more %}
+<div class="pagination">
+  <a href="/dashboard/events?page={{ event_page + 1 }}{% if event_filters.severity %}&severity={{ event_filters.severity }}{% endif %}{% if event_filters.category %}&category={{ event_filters.category }}{% endif %}"
+     class="btn"
+     hx-get="/dashboard/events?page={{ event_page + 1 }}{% if event_filters.severity %}&severity={{ event_filters.severity }}{% endif %}{% if event_filters.category %}&category={{ event_filters.category }}{% endif %}"
+     hx-target="#event-list"
+     hx-swap="innerHTML"
+     hx-push-url="true">
+    Load more
+  </a>
+  <span class="pagination-info">Showing {{ events | length }} of {{ event_total }}</span>
+</div>
+{% else %}
+<div class="pagination">
+  <span class="pagination-info">{{ event_total }} event{{ 's' if event_total != 1 }} total</span>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+  <h2>No events</h2>
+  <p>Events will appear here as actions are performed on the system.</p>
+</div>
+{% endif %}

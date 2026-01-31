@@ -989,6 +989,7 @@ async def upload_certificate(
             "message": f"Custom certificate uploaded for {domain}",
             "domain": cert.domain,
             "certificate": cert_data,
+            "reloaded": reloaded,
             "suggestions": [f"Verify HTTPS is working: curl -I https://{domain}"],
             "warnings": [],
         }
@@ -1053,6 +1054,7 @@ async def renew_certificate(domain: str, force: bool = False, auto_reload: bool 
             "message": f"Certificate renewed for {domain}",
             "domain": result.domain,
             "certificate": cert_data,
+            "reloaded": reloaded,
             "suggestions": [f"Verify HTTPS is working: curl -I https://{domain}"],
             "warnings": [],
         }

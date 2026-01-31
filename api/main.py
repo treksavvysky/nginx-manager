@@ -16,12 +16,11 @@ from datetime import datetime
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
-
-from fastapi.staticfiles import StaticFiles
 
 from config import ensure_directories, settings
 from core.rate_limiter import limiter

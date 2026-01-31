@@ -1,0 +1,17 @@
+{% if result.success %}
+<div class="toast success">
+  {{ result.message }}
+  {% if result.transaction_id %}
+  <br><small>Rollback transaction: {{ result.transaction_id[:8] }}...</small>
+  {% endif %}
+  {% if result.warnings %}
+  {% for w in result.warnings %}
+  <br><small style="color: var(--color-warning);">{{ w }}</small>
+  {% endfor %}
+  {% endif %}
+</div>
+{% else %}
+<div class="toast error">
+  Rollback failed: {{ result.message }}
+</div>
+{% endif %}

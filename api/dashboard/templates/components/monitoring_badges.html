@@ -1,0 +1,63 @@
+{# Monitoring badge macros — reusable across health, certs, events, transactions pages #}
+
+{% macro cert_status_badge(status) %}
+{% if status == 'valid' %}
+<span class="badge badge-enabled">Valid</span>
+{% elif status == 'expiring_soon' %}
+<span class="badge badge-warning">Expiring Soon</span>
+{% elif status == 'expired' %}
+<span class="badge badge-danger">Expired</span>
+{% elif status == 'pending' %}
+<span class="badge badge-info">Pending</span>
+{% elif status == 'failed' %}
+<span class="badge badge-danger">Failed</span>
+{% elif status == 'revoked' %}
+<span class="badge badge-disabled">Revoked</span>
+{% else %}
+<span class="badge badge-disabled">{{ status }}</span>
+{% endif %}
+{% endmacro %}
+
+{% macro severity_badge(severity) %}
+{% if severity == 'critical' %}
+<span class="badge badge-danger">Critical</span>
+{% elif severity == 'error' %}
+<span class="badge badge-danger">Error</span>
+{% elif severity == 'warning' %}
+<span class="badge badge-warning">Warning</span>
+{% else %}
+<span class="badge badge-info">Info</span>
+{% endif %}
+{% endmacro %}
+
+{% macro txn_status_badge(status) %}
+{% if status == 'completed' %}
+<span class="badge badge-enabled">Completed</span>
+{% elif status == 'failed' %}
+<span class="badge badge-danger">Failed</span>
+{% elif status == 'rolled_back' %}
+<span class="badge badge-warning">Rolled Back</span>
+{% elif status == 'in_progress' %}
+<span class="badge badge-info">In Progress</span>
+{% elif status == 'pending' %}
+<span class="badge badge-disabled">Pending</span>
+{% else %}
+<span class="badge badge-disabled">{{ status }}</span>
+{% endif %}
+{% endmacro %}
+
+{% macro operation_badge(operation) %}
+<span class="badge badge-proxy">{{ operation | replace('_', ' ') | title }}</span>
+{% endmacro %}
+
+{% macro health_status_badge(status) %}
+{% if status == 'healthy' %}
+<span class="badge badge-enabled">Healthy</span>
+{% elif status == 'degraded' %}
+<span class="badge badge-warning">Degraded</span>
+{% elif status == 'unhealthy' %}
+<span class="badge badge-danger">Unhealthy</span>
+{% else %}
+<span class="badge badge-disabled">Unknown</span>
+{% endif %}
+{% endmacro %}

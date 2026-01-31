@@ -1,0 +1,85 @@
+{% import "components/monitoring_badges.html" as mbadges %}
+
+{% if transactions %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Operation</th>
+        <th>Status</th>
+        <th>Resource</th>
+        <th>Created</th>
+        <th>Duration</th>
+        <th>Error</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for txn in transactions %}
+      <tr style="cursor: pointer;"
+          x-data="{ open: false }"
+          @click="open = !open; if (open && !$refs.detail{{ loop.index }}.innerHTML.trim()) { htmx.ajax('GET', '/dashboard/transactions/{{ txn.id }}/detail', {target: $refs.detail{{ loop.index }}}); }">
+        <td>
+          <span style="font-family: var(--font-mono); font-size: 0.82rem;">{{ txn.id[:8] }}...</span>
+        </td>
+        <td>{{ mbadges.operation_badge(txn.operation) }}</td>
+        <td>{{ mbadges.txn_status_badge(txn.status) }}</td>
+        <td>
+          {% if txn.resource_type and txn.resource_id %}
+          <span style="font-size: 0.85rem;">{{ txn.resource_id }}</span>
+          {% else %}
+          —
+          {% endif %}
+        </td>
+        <td style="white-space: nowrap; font-size: 0.82rem; color: var(--color-text-secondary);">
+          {{ txn.created_at.strftime('%Y-%m-%d %H:%M:%S') if txn.created_at else '—' }}
+        </td>
+        <td style="font-family: var(--font-mono); font-size: 0.82rem;">
+          {% if txn.duration_ms is not none %}
+          {{ txn.duration_ms }}ms
+          {% else %}
+          —
+          {% endif %}
+        </td>
+        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem;">
+          {% if txn.error_message %}
+          <span style="color: var(--color-danger);">{{ txn.error_message }}</span>
+          {% else %}
+          —
+          {% endif %}
+        </td>
+      </tr>
+      <tr class="detail-row" x-show="open" @click.stop>
+        <td colspan="7" x-ref="detail{{ loop.index }}">
+          {# Detail loaded via HTMX on first expand #}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if txn_has_more %}
+<div class="pagination">
+  <a href="/dashboard/transactions?page={{ txn_page + 1 }}{% if txn_filters.status %}&status={{ txn_filters.status }}{% endif %}{% if txn_filters.operation %}&operation={{ txn_filters.operation }}{% endif %}"
+     class="btn"
+     hx-get="/dashboard/transactions?page={{ txn_page + 1 }}{% if txn_filters.status %}&status={{ txn_filters.status }}{% endif %}{% if txn_filters.operation %}&operation={{ txn_filters.operation }}{% endif %}"
+     hx-target="#txn-list"
+     hx-swap="innerHTML"
+     hx-push-url="true">
+    Load more
+  </a>
+  <span class="pagination-info">Showing {{ transactions | length }} of {{ txn_total }}</span>
+</div>
+{% else %}
+<div class="pagination">
+  <span class="pagination-info">{{ txn_total }} transaction{{ 's' if txn_total != 1 }} total</span>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+  <h2>No transactions</h2>
+  <p>Transactions will appear here when configuration changes are made.</p>
+</div>
+{% endif %}

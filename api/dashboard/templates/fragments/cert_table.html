@@ -1,0 +1,65 @@
+{% import "components/monitoring_badges.html" as mbadges %}
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Domain</th>
+        <th>Status</th>
+        <th>Type</th>
+        <th>Expires</th>
+        <th>Days Left</th>
+        <th>Auto Renew</th>
+        <th>Issuer</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cert in certificates %}
+      <tr>
+        <td>
+          <strong>{{ cert.domain }}</strong>
+          {% if cert.alt_names %}
+          <br><small style="color: var(--color-text-secondary);">{{ cert.alt_names | join(', ') }}</small>
+          {% endif %}
+        </td>
+        <td>{{ mbadges.cert_status_badge(cert.status) }}</td>
+        <td>
+          <span class="badge badge-proxy">{{ cert.certificate_type | replace('_', ' ') | title }}</span>
+        </td>
+        <td>
+          {% if cert.not_after %}
+          {{ cert.not_after.strftime('%Y-%m-%d') }}
+          {% else %}
+          —
+          {% endif %}
+        </td>
+        <td>
+          {% if cert.days_until_expiry is not none %}
+            {% if cert.days_until_expiry <= 0 %}
+            <span style="color: var(--color-danger); font-weight: 600;">Expired</span>
+            {% elif cert.days_until_expiry <= 7 %}
+            <span style="color: var(--color-danger); font-weight: 600;">{{ cert.days_until_expiry }}d</span>
+            {% elif cert.days_until_expiry <= 30 %}
+            <span style="color: var(--color-warning); font-weight: 600;">{{ cert.days_until_expiry }}d</span>
+            {% else %}
+            <span style="color: var(--color-success);">{{ cert.days_until_expiry }}d</span>
+            {% endif %}
+          {% else %}
+          —
+          {% endif %}
+        </td>
+        <td>
+          {% if cert.auto_renew %}
+          <span class="badge badge-enabled">Yes</span>
+          {% else %}
+          <span class="badge badge-disabled">No</span>
+          {% endif %}
+        </td>
+        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          {{ cert.issuer or '—' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

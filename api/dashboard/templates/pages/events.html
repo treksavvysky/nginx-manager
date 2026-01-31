@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Event Log — NGINX Manager{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Event Log</h1>
+</div>
+
+<div class="filter-bar">
+  <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    <a href="/dashboard/events"
+       class="filter-chip {% if not event_filters.severity %}active{% endif %}"
+       hx-get="/dashboard/events"
+       hx-target="#event-list"
+       hx-push-url="true">
+      All ({{ event_counts.total }})
+    </a>
+    <a href="/dashboard/events?severity=critical{% if event_filters.category %}&category={{ event_filters.category }}{% endif %}"
+       class="filter-chip severity-critical {% if event_filters.severity == 'critical' %}active{% endif %}"
+       hx-get="/dashboard/events?severity=critical{% if event_filters.category %}&category={{ event_filters.category }}{% endif %}"
+       hx-target="#event-list"
+       hx-push-url="true">
+      Critical ({{ event_counts.critical }})
+    </a>
+    <a href="/dashboard/events?severity=error{% if event_filters.category %}&category={{ event_filters.category }}{% endif %}"
+       class="filter-chip severity-error {% if event_filters.severity == 'error' %}active{% endif %}"
+       hx-get="/dashboard/events?severity=error{% if event_filters.category %}&category={{ event_filters.category }}{% endif %}"
+       hx-target="#event-list"
+       hx-push-url="true">
+      Error ({{ event_counts.error }})
+    </a>
+    <a href="/dashboard/events?severity=warning{% if event_filters.category %}&category={{ event_filters.category }}{% endif %}"
+       class="filter-chip severity-warning {% if event_filters.severity == 'warning' %}active{% endif %}"
+       hx-get="/dashboard/events?severity=warning{% if event_filters.category %}&category={{ event_filters.category }}{% endif %}"
+       hx-target="#event-list"
+       hx-push-url="true">
+      Warning ({{ event_counts.warning }})
+    </a>
+    <a href="/dashboard/events?severity=info{% if event_filters.category %}&category={{ event_filters.category }}{% endif %}"
+       class="filter-chip {% if event_filters.severity == 'info' %}active{% endif %}"
+       hx-get="/dashboard/events?severity=info{% if event_filters.category %}&category={{ event_filters.category }}{% endif %}"
+       hx-target="#event-list"
+       hx-push-url="true">
+      Info ({{ event_counts.info }})
+    </a>
+  </div>
+
+  <select onchange="window.location.href='/dashboard/events?category=' + this.value + '{% if event_filters.severity %}&severity={{ event_filters.severity }}{% endif %}'">
+    <option value="" {% if not event_filters.category %}selected{% endif %}>All Categories</option>
+    <option value="transaction" {% if event_filters.category == 'transaction' %}selected{% endif %}>Transaction</option>
+    <option value="ssl" {% if event_filters.category == 'ssl' %}selected{% endif %}>SSL</option>
+    <option value="health" {% if event_filters.category == 'health' %}selected{% endif %}>Health</option>
+    <option value="system" {% if event_filters.category == 'system' %}selected{% endif %}>System</option>
+    <option value="config" {% if event_filters.category == 'config' %}selected{% endif %}>Config</option>
+  </select>
+</div>
+
+<div id="event-list">
+  {% include "fragments/event_table.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,111 @@
+{% import "components/monitoring_badges.html" as mbadges %}
+
+<div style="padding: 0.5rem;">
+  <div class="detail-section">
+    <h4>Transaction Details</h4>
+    <div class="detail-grid">
+      <div class="detail-item">
+        <label>Full ID</label>
+        <span style="font-family: var(--font-mono); font-size: 0.82rem;">{{ detail.id }}</span>
+      </div>
+      <div class="detail-item">
+        <label>Operation</label>
+        <span>{{ mbadges.operation_badge(detail.operation) }}</span>
+      </div>
+      <div class="detail-item">
+        <label>Status</label>
+        <span>{{ mbadges.txn_status_badge(detail.status) }}</span>
+      </div>
+      {% if detail.resource_id %}
+      <div class="detail-item">
+        <label>Resource</label>
+        <span>{{ detail.resource_type }}: {{ detail.resource_id }}</span>
+      </div>
+      {% endif %}
+      <div class="detail-item">
+        <label>NGINX Validated</label>
+        <span>{{ 'Yes' if detail.nginx_validated else 'No' }}</span>
+      </div>
+      <div class="detail-item">
+        <label>Health Verified</label>
+        <span>{{ 'Yes' if detail.health_verified else 'No' }}</span>
+      </div>
+    </div>
+  </div>
+
+  {% if detail.error_message %}
+  <div class="detail-section">
+    <h4>Error</h4>
+    <p style="color: var(--color-danger); font-size: 0.85rem;">{{ detail.error_message }}</p>
+  </div>
+  {% endif %}
+
+  {% if detail.diff and detail.diff.files_changed > 0 %}
+  <div class="detail-section">
+    <h4>Changes</h4>
+    <p style="font-size: 0.85rem; color: var(--color-text-secondary); margin-bottom: 0.5rem;">
+      {{ detail.diff.files_changed }} file{{ 's' if detail.diff.files_changed != 1 }} changed,
+      <span style="color: var(--color-success);">+{{ detail.diff.total_additions }}</span>
+      <span style="color: var(--color-danger);">-{{ detail.diff.total_deletions }}</span>
+    </p>
+    {% for file in detail.diff.files %}
+    <div style="margin-bottom: 0.5rem;">
+      <strong style="font-size: 0.82rem;">{{ file.file_path }}</strong>
+      <span class="badge badge-proxy" style="margin-left: 0.5rem;">{{ file.change_type }}</span>
+      {% if file.diff_content %}
+      <div class="diff-viewer">{% for line in file.diff_content.split('\n') %}{% if line.startswith('+') %}<span class="diff-add">{{ line }}</span>
+{% elif line.startswith('-') %}<span class="diff-del">{{ line }}</span>
+{% elif line.startswith('@@') %}<span class="diff-header">{{ line }}</span>
+{% else %}{{ line }}
+{% endif %}{% endfor %}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if detail.affected_files %}
+  <div class="detail-section">
+    <h4>Affected Files</h4>
+    <ul style="list-style: none; padding: 0;">
+      {% for f in detail.affected_files %}
+      <li style="font-family: var(--font-mono); font-size: 0.82rem; padding: 0.15rem 0;">{{ f }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="detail-section" style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border);">
+    {% if detail.can_rollback %}
+    <div x-data="{ showConfirm: false }">
+      <button class="btn btn-danger btn-sm" @click="showConfirm = true">Rollback this transaction</button>
+      <template x-if="showConfirm">
+        <div class="modal-backdrop" @click.self="showConfirm = false">
+          <div class="modal">
+            <h3>Confirm Rollback</h3>
+            <p>This will restore configuration to the state before this transaction. NGINX will be reloaded.</p>
+            <div class="modal-actions">
+              <button class="btn" @click="showConfirm = false">Cancel</button>
+              <button class="btn btn-danger"
+                      hx-post="/dashboard/transactions/{{ detail.id }}/rollback"
+                      hx-target="#toast-container"
+                      hx-swap="beforeend"
+                      @click="showConfirm = false">
+                Rollback
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+    {% else %}
+    <span style="color: var(--color-text-secondary); font-size: 0.82rem;">
+      {% if detail.rollback_reason %}
+      Rollback unavailable: {{ detail.rollback_reason }}
+      {% else %}
+      Rollback not available for this transaction.
+      {% endif %}
+    </span>
+    {% endif %}
+  </div>
+</div>
