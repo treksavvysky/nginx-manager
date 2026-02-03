@@ -101,17 +101,35 @@ class CertManager:
         """Save an ACME account to the database for reuse across restarts."""
         import uuid
 
-        account_id = account.id or f"acme-{uuid.uuid4().hex[:12]}"
+        # Check for existing account with same directory_url to avoid duplicates
+        existing = await self.db.fetch_one(
+            "SELECT id FROM acme_accounts WHERE directory_url = ? LIMIT 1",
+            (account.directory_url,),
+        )
+
         # Encrypt the private key at rest if enabled
         encryption = get_encryption_service()
         encrypted_key_pem = encryption.encrypt_string(account.private_key_pem)
-        await self.db.execute(
-            """INSERT OR REPLACE INTO acme_accounts
-               (id, email, directory_url, account_url, private_key_pem)
-               VALUES (?, ?, ?, ?, ?)""",
-            (account_id, account.email, account.directory_url, account.account_url, encrypted_key_pem),
-        )
-        logger.info(f"Saved ACME account {account_id} for {account.directory_url}")
+
+        if existing:
+            # Update existing account record instead of creating a duplicate
+            account_id = existing["id"]
+            await self.db.execute(
+                """UPDATE acme_accounts
+                   SET email = ?, account_url = ?, private_key_pem = ?
+                   WHERE id = ?""",
+                (account.email, account.account_url, encrypted_key_pem, account_id),
+            )
+            logger.info(f"Updated existing ACME account {account_id} for {account.directory_url}")
+        else:
+            account_id = account.id or f"acme-{uuid.uuid4().hex[:12]}"
+            await self.db.execute(
+                """INSERT INTO acme_accounts
+                   (id, email, directory_url, account_url, private_key_pem)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (account_id, account.email, account.directory_url, account.account_url, encrypted_key_pem),
+            )
+            logger.info(f"Saved new ACME account {account_id} for {account.directory_url}")
 
     def _get_cert_dir(self, domain: str) -> Path:
         """Get the certificate directory for a domain."""

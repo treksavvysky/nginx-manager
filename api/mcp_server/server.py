@@ -736,8 +736,11 @@ if __name__ == "__main__":
         os.environ.setdefault("NGINX_CONF_DIR", str(host_configs_dir))
         os.environ.setdefault("TRANSACTION_DB_PATH", str(host_data_dir / "api-backups" / "transactions.db"))
         os.environ.setdefault("SNAPSHOT_DIR", str(host_data_dir / "api-backups" / "snapshots"))
-        os.environ.setdefault("SSL_CERT_DIR", str(host_data_dir / "ssl"))
-        os.environ.setdefault("ACME_CHALLENGE_DIR", str(host_data_dir / "acme-challenge"))
+        # SSL_CERT_DIR and ACME_CHALLENGE_DIR must use container-internal paths
+        # because they end up in NGINX configs that run inside the Docker container.
+        # The shared Docker volume mounts these at the container paths.
+        os.environ.setdefault("SSL_CERT_DIR", "/etc/ssl/certs")
+        os.environ.setdefault("ACME_CHALLENGE_DIR", "/var/www/.well-known/acme-challenge")
 
     parser = argparse.ArgumentParser(description="NGINX Manager MCP Server")
     parser.add_argument(

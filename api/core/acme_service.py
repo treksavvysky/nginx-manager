@@ -180,7 +180,22 @@ class ACMEService:
 
         # Recreate client with loaded key
         self._client = None
-        await self._get_client()
+        acme_client = await self._get_client()
+
+        # Associate existing account registration with the client
+        # so it uses KID-based auth (not embedded JWK) for subsequent requests
+        if account.account_url:
+            def do_query_registration():
+                regr = messages.RegistrationResource(
+                    uri=account.account_url,
+                    body=messages.Registration(),
+                )
+                return acme_client.query_registration(regr)
+
+            try:
+                acme_client.net.account = await asyncio.to_thread(do_query_registration)
+            except Exception as e:
+                logger.warning(f"Failed to query existing ACME registration: {e}")
 
     def _make_csr(self, domains: list[str]) -> bytes:
         """
