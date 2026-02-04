@@ -8,13 +8,16 @@ echo "🚀 Starting NGINX Manager in development mode..."
 # Change to project root
 cd "$(dirname "$0")/.."
 
+# Load API_PORT from .env (default 8000)
+API_PORT=${API_PORT:-$(grep -E '^API_PORT=' .env 2>/dev/null | cut -d= -f2 || echo 8000)}
+
 # Stop existing containers
 echo "📦 Stopping existing containers..."
-docker compose -f docker/compose/dev.yml down
+docker compose -f docker/compose/dev.yml --env-file .env down
 
 # Build and start services
 echo "🔨 Building and starting services..."
-docker compose -f docker/compose/dev.yml up --build -d
+docker compose -f docker/compose/dev.yml --env-file .env up --build -d
 
 # Wait for services to be ready
 echo "⏳ Waiting for services to start..."
@@ -24,7 +27,7 @@ sleep 10
 echo "🔍 Checking service health..."
 
 # Check API health
-if curl -f http://localhost:8000/health > /dev/null 2>&1; then
+if curl -f http://localhost:${API_PORT}/health > /dev/null 2>&1; then
     echo "✅ API is healthy"
 else
     echo "❌ API health check failed"
@@ -43,13 +46,14 @@ echo ""
 echo "🎉 NGINX Manager is running!"
 echo ""
 echo "📊 Services:"
-echo "  - API:          http://localhost:8000"
-echo "  - API Docs:     http://localhost:8000/docs"
+echo "  - API:          http://localhost:${API_PORT}"
+echo "  - API Docs:     http://localhost:${API_PORT}/docs"
+echo "  - Dashboard:    http://localhost:${API_PORT}/dashboard/"
 echo "  - NGINX:        http://localhost"
 echo "  - NGINX Health: http://localhost/health"
 echo ""
 echo "📝 Useful commands:"
-echo "  - View logs:    docker compose -f docker/compose/dev.yml logs -f"
-echo "  - Stop:         docker compose -f docker/compose/dev.yml down"
+echo "  - View logs:    docker compose -f docker/compose/dev.yml --env-file .env logs -f"
+echo "  - Stop:         docker compose -f docker/compose/dev.yml --env-file .env down"
 echo "  - Restart:      ./scripts/dev-deploy.sh"
 echo ""

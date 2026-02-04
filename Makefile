@@ -20,4 +20,7 @@ dev:
 	./scripts/dev-deploy.sh
 
 down:
-	docker compose -f docker/compose/dev.yml down
+	docker compose -f docker/compose/dev.yml --env-file .env down
+
+logs:
+	docker compose -f docker/compose/dev.yml --env-file .env logs -f
