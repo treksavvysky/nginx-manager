@@ -13,35 +13,36 @@ NGINX Manager is an AI-agent-first REST API for managing NGINX configurations, S
 ./scripts/dev-deploy.sh                           # Start dev environment (hot reload)
 docker compose -f docker/compose/dev.yml logs -f  # View logs
 docker compose -f docker/compose/dev.yml down     # Stop services
+make dev                                          # Alias for dev-deploy.sh
+make down                                         # Stop dev services
 ```
 
-### Production
+### Testing
 ```bash
-./scripts/prod-deploy.sh             # Deploy to production
-curl http://localhost:8000/health    # Check API health
-```
+make ci                                    # Full CI: lint + test with coverage
+make lint                                  # Ruff check + format verification
+make format                                # Auto-fix lint issues and format code
+make test                                  # Run all unit tests
+make test-cov                              # Tests with coverage (45% threshold)
 
-### API Documentation
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-- OpenAPI schema: http://localhost:8000/openapi.json
-
-### Testing & CI
-```bash
-make ci                             # Run full CI check (lint + test with coverage)
-make lint                           # Ruff check + format verification
-make format                         # Auto-fix lint issues and format code
-make test                           # Run unit tests with verbose output
-make test-cov                       # Run tests with coverage report (45% threshold)
-pytest tests/unit/ -v               # Run unit tests directly
+# Run specific tests
+uv run pytest tests/unit/test_nginx_endpoints.py -v          # Single file
+uv run pytest tests/unit/test_nginx_endpoints.py::TestNginxStatus -v  # Single class
+uv run pytest tests/unit/test_nginx_endpoints.py::TestNginxStatus::test_status_running_container -v  # Single test
+uv run pytest -k "reload" -v               # Tests matching pattern
 ```
 
 ### Linting
 ```bash
-uv run ruff check api/ tests/       # Check lint rules
-uv run ruff check --fix api/ tests/  # Auto-fix lint issues
-uv run ruff format api/ tests/       # Format code
+uv run ruff check api/ tests/              # Check lint rules
+uv run ruff check --fix api/ tests/        # Auto-fix lint issues
+uv run ruff format api/ tests/             # Format code
 ```
+
+### API & Documentation
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+- Dashboard: http://localhost:8000/dashboard/
 
 ## Architecture
 
@@ -58,477 +59,114 @@ Client (AI Agents / REST API / Web Dashboard)
     NGINX Container + Docker Compose
 ```
 
-**Key modules:**
-- `api/main.py` - FastAPI app setup, lifespan manager, root/health endpoints
-- `api/endpoints/sites.py` - Site CRUD endpoints (list, get, create, update, delete, enable, disable)
-- `api/endpoints/nginx.py` - NGINX control endpoints (reload, restart, status, test)
-- `api/endpoints/certificates.py` - SSL certificate endpoints (request, list, get, delete, renew, upload, diagnose)
-- `api/endpoints/transactions.py` - Transaction history and rollback endpoints
-- `api/endpoints/events.py` - Event audit log endpoints
-- `api/endpoints/workflows.py` - Compound workflow endpoints (setup-site, migrate-site) with SSE streaming
-- `api/endpoints/gpt.py` - GPT integration endpoints (openapi.json schema, instructions)
-- `api/endpoints/auth.py` - Authentication endpoints (bootstrap, API key CRUD, token exchange/refresh)
-- `api/endpoints/users.py` - User management endpoints (login, verify-2fa, user CRUD, password change)
-- `api/endpoints/totp.py` - TOTP 2FA endpoints (enroll, confirm, disable, status, backup code regeneration)
-- `api/endpoints/sessions.py` - Session management endpoints (list, revoke specific, revoke all)
-- `api/core/config_manager/crossplane_parser.py` - Crossplane-based NGINX parser (full directive support: server, location, upstream, map, geo, include resolution)
-- `api/core/config_manager/adapter.py` - Converts parsed config to API response format
-- `api/core/config_generator/generator.py` - Jinja2-based NGINX config generator
-- `api/core/config_generator/templates/` - NGINX config templates (static_site, reverse_proxy, ssl_static_site, ssl_reverse_proxy)
-- `api/core/docker_service.py` - Docker SDK wrapper for NGINX container management
-- `api/core/health_checker.py` - HTTP health verification with retries
-- `api/core/acme_service.py` - ACME protocol client for Let's Encrypt certificate automation
-- `api/core/cert_manager.py` - Certificate lifecycle management (request, renew, revoke, upload)
-- `api/core/cert_scheduler.py` - Background scheduler for auto-renewal and expiry warnings
-- `api/core/transaction_manager.py` - Transaction lifecycle management with snapshots
-- `api/core/event_store.py` - Event persistence and querying
-- `api/core/snapshot_service.py` - Configuration state capture and restoration
-- `api/core/context_helpers.py` - Generates suggestions, warnings, and security warnings for AI-friendly responses
-- `api/core/auth_service.py` - API key + JWT token management (creation, validation, hashing, challenge tokens for 2FA)
-- `api/core/auth_dependency.py` - FastAPI Depends() for authentication, role-based access control, session revocation checks, 2FA challenge token rejection
-- `api/core/user_service.py` - User account management (bcrypt hashing, login with lockout, CRUD, 2FA-aware authentication)
-- `api/core/totp_service.py` - TOTP 2FA lifecycle (secret generation, QR code, enrollment, confirmation, verification, backup codes)
-- `api/core/session_service.py` - JWT session tracking (create, revoke, list active, cleanup expired)
-- `api/core/encryption_service.py` - Fernet encryption for private key and TOTP secret storage at rest
-- `api/core/rate_limiter.py` - slowapi rate limiting configuration
-- `api/core/request_logger.py` - HTTP request logging middleware
-- `api/core/database.py` - SQLite async database management (transactions, events, certificates, acme_accounts, api_keys, users, sessions)
-- `api/core/workflow_engine.py` - Generic workflow execution engine with checkpoint-based rollback and progress callbacks
-- `api/core/workflow_definitions.py` - Concrete step implementations for setup-site and migrate-site workflows
-- `api/core/gpt_schema.py` - Transforms FastAPI OpenAPI schema for Custom GPT Actions compatibility (tag filtering, description truncation, operationId enforcement)
-- `api/models/nginx.py` - Rich data models: ServerBlock, LocationBlock, UpstreamBlock, MapBlock, GeoBlock, SSLConfig, NginxOperationResult, ParsedNginxConfig
-- `api/models/certificate.py` - SSL certificate models: Certificate, CertificateStatus, CertificateRequestCreate, CertificateUploadRequest, CertificateMutationResponse
-- `api/models/transaction.py` - Transaction, TransactionDetail, RollbackResult models
-- `api/models/event.py` - Event, EventFilters models (with audit fields: client_ip, user_id, api_key_id)
-- `api/models/auth.py` - Auth models: Role, AuthContext, APIKey, User, LoginRequest/Response, TokenRequest/Response, TOTPEnrollResponse, TOTPConfirmRequest, TOTPVerifyRequest, TOTPStatusResponse, SessionInfo, SessionListResponse
-- `api/models/config.py` - Pydantic models: SiteConfig, SiteConfigResponse, ConfigValidationResult
-- `api/models/site_requests.py` - Site CRUD request/response models: SiteCreateRequest, SiteUpdateRequest, SiteMutationResponse, DryRunResult, DryRunDiff
-- `api/models/workflow.py` - Workflow models: SetupSiteRequest, MigrateSiteRequest, WorkflowResponse, WorkflowDryRunResponse, WorkflowProgressEvent
-- `api/config.py` - Pydantic BaseSettings for environment configuration
-- `api/gpt/instructions.md` - System prompt template for Custom GPT builder
-- `api/gpt/example_config.json` - Example Custom GPT configuration
-- `api/mcp_server/` - MCP (Model Context Protocol) server for AI agent integration
-  - `api/mcp_server/server.py` - Main MCP server with stdio and HTTP transport support
-  - `api/mcp_server/resources.py` - Read-only resources (sites, certificates, health, events, transactions)
-  - `api/mcp_server/tools.py` - Executable tools (site CRUD, NGINX control, SSL management, rollback, workflows)
-  - `api/mcp_server/prompts.py` - Workflow templates (setup site, add SSL, diagnose connectivity)
-- `api/dashboard/` - Web dashboard (HTMX + Alpine.js + Jinja2, no SPA/build pipeline)
-  - `api/dashboard/__init__.py` - Dashboard router factory, Jinja2Templates setup, static/template paths
-  - `api/dashboard/router.py` - All dashboard routes: pages, HTMX fragments, login/logout/2FA, site CRUD, NGINX quick actions, workflow execution, user/API key admin
-  - `api/dashboard/dependencies.py` - Cookie-based JWT auth (HttpOnly, SameSite=Strict), HTMX detection helper
-  - `api/dashboard/context.py` - Shared template context builders (auth state, health summary, nav state)
-  - `api/dashboard/templates/` - Jinja2 templates (base layout, 12 pages, 15 fragments, 9 components)
-  - `api/dashboard/static/` - CSS, JS (workflow-sse.js, config-editor.js), vendored libraries (htmx, Alpine.js, highlight.js)
+### Key Modules
 
-**Docker setup:**
-- `docker/compose/dev.yml` - Development with hot reload, volumes mounted
-- `docker/compose/prod.yml` - Production hardened, localhost-only API, non-root user
-- `docker/api/Dockerfile` - Python 3.12-slim base
-- `docker/nginx/Dockerfile` - nginx:alpine base
+**Entry Points:**
+- `api/main.py` - FastAPI app setup, lifespan manager, middleware, root/health endpoints
+- `api/config.py` - Pydantic BaseSettings for all environment configuration
 
-**Directory structure (persistent storage):**
+**REST Endpoints (`api/endpoints/`):**
+- `sites.py` - Site CRUD (create, update, delete, enable, disable)
+- `nginx.py` - NGINX control (reload, restart, status, test)
+- `certificates.py` - SSL certificates (request, renew, upload, diagnose)
+- `workflows.py` - Compound operations with SSE streaming
+- `auth.py`, `users.py`, `totp.py`, `sessions.py` - Authentication & 2FA
+
+**Core Services (`api/core/`):**
+- `config_manager/crossplane_parser.py` - NGINX config parsing via crossplane
+- `config_generator/generator.py` - Jinja2-based config generation
+- `docker_service.py` - Docker SDK wrapper for NGINX container
+- `cert_manager.py` - SSL certificate lifecycle
+- `transaction_manager.py` - Transaction system with snapshots
+- `workflow_engine.py` - Generic workflow execution with rollback
+
+**MCP Server (`api/mcp_server/`):**
+- `server.py` - MCP server with stdio/HTTP transport
+- `resources.py` - Read-only resources (sites, certs, health)
+- `tools.py` - Executable actions (CRUD, reload, SSL)
+
+**Dashboard (`api/dashboard/`):**
+- `router.py` - All dashboard routes (HTMX fragments + full pages)
+- `dependencies.py` - Cookie-based JWT auth
+- Server-rendered with HTMX + Alpine.js + Jinja2
+
+### Data Models (`api/models/`)
+- `nginx.py` - ServerBlock, LocationBlock, UpstreamBlock, SSLConfig
+- `certificate.py` - Certificate, CertificateStatus
+- `transaction.py`, `event.py` - Audit trail
+- `auth.py` - Role, APIKey, User, Session
+
+### Docker Setup
+- `docker/compose/dev.yml` - Development with hot reload
+- `docker/compose/prod.yml` - Production hardened
+- `docker/api/Dockerfile` - Python 3.12-slim
+- `docker/nginx/Dockerfile` - nginx:alpine
+
+### Directory Structure (Persistent Storage)
 ```
 ├── test-configs/          → /etc/nginx/conf.d    (NGINX site configs)
 ├── www/                   → /var/www             (Website content)
 └── data/
-    ├── ssl/               → /etc/ssl             (SSL certificates & private keys)
-    ├── acme-challenge/    → /var/www/.well-known/acme-challenge (ACME HTTP-01 challenges)
-    ├── nginx-logs/        → /var/log/nginx       (NGINX access/error logs)
-    ├── api-logs/          → /var/log/nginx-manager (API logs)
-    └── api-backups/       → /var/backups/nginx   (Database & config snapshots)
+    ├── ssl/               → /etc/ssl             (SSL certs & keys)
+    ├── acme-challenge/    → HTTP-01 challenges
+    ├── nginx-logs/        → NGINX logs
+    ├── api-logs/          → API logs
+    └── api-backups/       → Database & snapshots
 ```
 
-## Data Persistence & Security
+## Testing Patterns
 
-**Persistent Data**: The `data/` directory contains all persistent state and survives container restarts. Even in development mode, data is stored on the host filesystem, not inside containers. Back up this directory to preserve:
-- SSL certificates and private keys
-- Transaction history and certificate metadata (SQLite database)
-- Configuration snapshots for rollback
+Tests use `pytest` with `pytest-asyncio`. Auth is disabled globally in `tests/conftest.py`:
+```python
+os.environ["AUTH_ENABLED"] = "false"
+```
 
-**Sensitive Data - DO NOT COMMIT**: The following contain secrets and must never be pushed to git:
+Common fixtures in `tests/conftest.py`:
+- `mock_transaction_ctx` - Mocked transactional_operation
+- `mock_docker_service` - Pre-configured DockerService mock
+- `tmp_conf_dir` - Temporary NGINX conf directory
+- `sample_site_config` - Standard site config dict
+
+Test pattern using httpx AsyncClient:
+```python
+from httpx import ASGITransport, AsyncClient
+from main import app
+
+@pytest.mark.asyncio
+async def test_endpoint():
+    with patch("endpoints.nginx.docker_service") as mock:
+        mock.get_container_status = AsyncMock(return_value={...})
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/nginx/status")
+```
+
+## Key Design Patterns
+
+**All mutation endpoints support:**
+- `?dry_run=true` - Preview changes without applying
+- Transaction creation with snapshots for rollback
+- Rich context responses with `suggestions` and `warnings` fields
+
+**Authentication (opt-in via `AUTH_ENABLED=true`):**
+- API Key: `X-API-Key` header (format: `ngx_` + 64 hex chars)
+- JWT: `Authorization: Bearer <token>`
+- Roles: ADMIN (level 3) > OPERATOR (level 2) > VIEWER (level 1)
+- Optional TOTP 2FA for user logins
+
+**Safety Features:**
+- Config validation with `nginx -t` before deployment
+- Auto-rollback if health check fails after reload
+- NGINX config injection prevention
+- SSRF prevention for proxy_pass URLs
+
+## Sensitive Data - DO NOT COMMIT
+
+These paths are in `.gitignore`:
 - `data/ssl/` - SSL private keys
 - `data/api-backups/*.db` - May contain ACME account keys
 - `.env` files - API keys and credentials
 
-These paths are excluded in `.gitignore`. Before committing, verify with:
-```bash
-git status --ignored
-```
-
-**Development vs Production**: Both environments use the same persistent storage pattern. The difference is that dev mounts source code for hot-reload while prod uses built images. Your certificates and database persist regardless of which mode you use.
-
-## Configuration
-
-Environment variables managed via Pydantic BaseSettings in `api/config.py`:
-- `NGINX_CONF_DIR`, `BACKUP_DIR`, `SSL_CERT_DIR` - Path configurations
-- `API_DEBUG` - Enable debug mode and verbose logging
-- `VALIDATE_BEFORE_DEPLOY`, `AUTO_BACKUP` - Safety flags
-- `NGINX_CONTAINER_NAME` - Docker container name for NGINX (default: nginx-manager-nginx)
-- `NGINX_HEALTH_ENDPOINT` - HTTP endpoint to verify NGINX health
-- `NGINX_OPERATION_TIMEOUT`, `NGINX_HEALTH_CHECK_RETRIES`, `NGINX_HEALTH_CHECK_INTERVAL` - Operation settings
-- `TRANSACTION_DB_PATH` - SQLite database for transaction/event metadata
-- `SNAPSHOT_DIR` - Directory for configuration snapshots
-- `SNAPSHOT_RETENTION_DAYS`, `EVENT_RETENTION_DAYS` - Retention policies
-- `AUTO_ROLLBACK_ON_FAILURE` - Automatic rollback on operation failure
-- `ACME_DIRECTORY_URL` - Let's Encrypt ACME directory (production by default)
-- `ACME_STAGING_URL` - Let's Encrypt staging directory for testing
-- `ACME_USE_STAGING` - Use staging environment to avoid rate limits during development
-- `ACME_ACCOUNT_EMAIL` - Email for Let's Encrypt account registration
-- `ACME_CHALLENGE_DIR` - Directory for HTTP-01 challenge files
-- `CERT_RENEWAL_DAYS` - Days before expiry to trigger auto-renewal (default: 30)
-- `CERT_EXPIRY_WARNING_DAYS` - Days before expiry to generate warnings (default: 14)
-- `WORKFLOW_STEP_TIMEOUT` - Timeout in seconds for individual workflow steps (default: 120)
-- `WORKFLOW_AUTO_ROLLBACK` - Automatically rollback checkpoint steps on workflow failure (default: true)
-- `AUTH_ENABLED` - Enable API key/JWT authentication (default: false for backward compatibility)
-- `AUTH_MASTER_KEY` - Master key for bootstrapping the first admin API key
-- `JWT_SECRET_KEY` - Secret key for signing JWT tokens (required when AUTH_ENABLED=true)
-- `JWT_ALGORITHM` - Algorithm for JWT signing (default: HS256)
-- `JWT_EXPIRY_MINUTES` - JWT token expiration time in minutes (default: 60)
-- `MCP_API_KEY` - API key for MCP server authentication (stdio transport)
-- `MCP_REQUIRE_AUTH` - Require authentication for MCP connections (default: true)
-- `CORS_ALLOWED_ORIGINS` - Comma-separated list of allowed CORS origins (empty = wildcard in debug mode only)
-- `ENCRYPT_PRIVATE_KEYS` - Encrypt SSL private keys at rest using Fernet (default: false)
-- `PRIVATE_KEY_ENCRYPTION_KEY` - Passphrase for private key encryption (min 16 chars recommended)
-- `TOTP_ISSUER_NAME` - Issuer name shown in authenticator apps (default: "NGINX Manager")
-- `TOTP_ENFORCE_ADMIN` - Soft-enforce 2FA for admin users, advisory warning on login (default: true)
-- `TOTP_ENFORCE_OPERATOR` - Soft-enforce 2FA for operator users (default: false)
-- `TOTP_DIGITS` - Number of digits in TOTP codes (default: 6)
-- `TOTP_INTERVAL` - TOTP code rotation interval in seconds (default: 30)
-- `TOTP_CHALLENGE_EXPIRY_MINUTES` - 2FA challenge token lifetime (default: 5)
-- `SESSION_CLEANUP_INTERVAL_HOURS` - Interval for expired session cleanup (default: 24)
-- `DASHBOARD_ENABLED` - Enable the web dashboard at `/dashboard/` (default: true)
-
-## API Usage Examples
-
-### Create a static site
-```bash
-curl -X POST http://localhost:8000/sites/ \
-  -H "Content-Type: application/json" \
-  -d '{"name": "example.com", "server_names": ["example.com"], "site_type": "static", "root_path": "/var/www/example", "auto_reload": true}'
-```
-
-### Create a reverse proxy site
-```bash
-curl -X POST http://localhost:8000/sites/ \
-  -H "Content-Type: application/json" \
-  -d '{"name": "api.example.com", "server_names": ["api.example.com"], "site_type": "reverse_proxy", "proxy_pass": "http://localhost:3000", "auto_reload": true}'
-```
-
-### List all sites
-```bash
-curl http://localhost:8000/sites/
-```
-
-### Test a site (requires Host header for virtual hosts)
-```bash
-curl -H "Host: example.com" http://localhost/
-```
-
-### Request Let's Encrypt SSL certificate
-```bash
-curl -X POST http://localhost:8000/certificates/ \
-  -H "Content-Type: application/json" \
-  -d '{"domain": "example.com", "alt_names": ["www.example.com"], "auto_renew": true}'
-```
-
-### Check SSL readiness (dry-run)
-```bash
-curl -X POST "http://localhost:8000/certificates/?dry_run=true" \
-  -H "Content-Type: application/json" \
-  -d '{"domain": "example.com"}'
-```
-
-### List all certificates
-```bash
-curl http://localhost:8000/certificates/
-```
-
-### Run SSL diagnostic for a domain
-```bash
-curl http://localhost:8000/certificates/example.com/check
-```
-
-### Upload custom SSL certificate
-```bash
-curl -X POST http://localhost:8000/certificates/upload \
-  -H "Content-Type: application/json" \
-  -d '{"domain": "example.com", "certificate_pem": "-----BEGIN CERTIFICATE-----\n...", "private_key_pem": "-----BEGIN PRIVATE KEY-----\n..."}'
-```
-
-### Setup a complete site with SSL (workflow)
-```bash
-curl -X POST http://localhost:8000/workflows/setup-site \
-  -H "Content-Type: application/json" \
-  -d '{"name": "example.com", "server_names": ["example.com"], "site_type": "static", "root_path": "/var/www/example", "request_ssl": true}'
-```
-
-### Migrate a site with auto-rollback on failure (workflow)
-```bash
-curl -X POST http://localhost:8000/workflows/migrate-site \
-  -H "Content-Type: application/json" \
-  -d '{"name": "example.com", "proxy_pass": "http://localhost:4000"}'
-```
-
-### Preview a workflow (dry-run)
-```bash
-curl -X POST "http://localhost:8000/workflows/setup-site?dry_run=true" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "example.com", "server_names": ["example.com"], "site_type": "static", "root_path": "/var/www/example", "request_ssl": false}'
-```
-
-### Stream workflow progress (SSE)
-```bash
-curl -N -X POST "http://localhost:8000/workflows/setup-site?stream=true" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "example.com", "server_names": ["example.com"], "site_type": "static", "root_path": "/var/www/example"}'
-```
-
-### Get GPT-compatible OpenAPI schema
-```bash
-curl "http://localhost:8000/gpt/openapi.json?server_url=https://your-domain.com"
-```
-
-## Key Features
-
-- **Rich Context Responses**: All responses include `suggestions` and `warnings` fields for AI guidance
-- **Dry-Run Mode**: All mutation endpoints support `?dry_run=true` to preview changes without applying them
-- **Transaction System**: All changes create transactions with snapshots for rollback capability
-- **Auto-Rollback**: If health check fails after NGINX reload, configuration automatically rolls back
-- **Config Validation**: All config changes validated with `nginx -t` before deployment
-- **System State Summary**: Health endpoint provides comprehensive system state for AI situational awareness
-- **SSL Certificate Automation**: Let's Encrypt integration with HTTP-01 challenge, auto-renewal scheduler, custom certificate upload, and SSL diagnostics
-- **MCP Server**: Native Model Context Protocol support for Claude and other AI agents
-- **Agent Workflows**: Compound operations (setup-site, migrate-site) with checkpoint-based rollback and SSE progress streaming
-- **Custom GPT Integration**: GPT-compatible OpenAPI schema generator with description truncation, tag filtering, and system instruction templates
-- **Web Dashboard**: Server-rendered HTMX + Alpine.js dashboard for site management, monitoring, config viewing, and system health
-
-## MCP Server
-
-The MCP server provides an AI-native interface for NGINX Manager, exposing all functionality through the Model Context Protocol.
-
-### Running the MCP Server
-```bash
-# Stdio transport (for Claude Desktop/Claude Code)
-cd api && python3 mcp_server/server.py
-
-# HTTP transport (for remote access)
-cd api && python3 mcp_server/server.py --transport streamable-http --port 8080
-
-# Add to Claude Code (from project directory)
-claude mcp add nginx-manager --transport stdio -e PYTHONPATH=/path/to/api -- python3 /path/to/api/mcp_server/server.py
-```
-
-### MCP Resources (Read-Only)
-- `nginx://sites` - List all site configurations
-- `nginx://sites/{name}` - Get specific site details
-- `nginx://certificates` - List all SSL certificates
-- `nginx://health` - System health summary
-- `nginx://events` - Recent system events
-- `nginx://transactions` - Transaction history
-
-### MCP Tools (Actions)
-- `create_site`, `update_site`, `delete_site`, `enable_site`, `disable_site`
-- `nginx_reload`, `nginx_restart`, `nginx_test`
-- `request_certificate`, `upload_certificate`, `renew_certificate`, `revoke_certificate`, `diagnose_ssl`
-- `rollback_transaction`
-- `setup_site_workflow`, `migrate_site_workflow`
-
-### MCP Prompts (Workflow Templates)
-- `setup_new_site` - Guide for creating sites with optional SSL
-- `add_ssl_to_site` - Guide for adding SSL certificates
-- `check_expiring_certs` - Guide for certificate renewal
-- `diagnose_connectivity` - Guide for troubleshooting
-- `rollback_changes` - Guide for safe rollback
-
-See `docs/MCP_DESIGN.md` for full schema definitions and `docs/MCP_DEPLOYMENT.md` for deployment guide.
-
-## Custom GPT Integration
-
-The API can power an OpenAI Custom GPT for managing NGINX via natural language.
-
-### Setup
-1. Fetch the GPT-compatible schema: `GET /gpt/openapi.json?server_url=https://your-domain.com`
-2. Fetch the system instructions: `GET /gpt/instructions`
-3. In the GPT builder, import the schema and paste the instructions
-4. Set authentication to API Key with header `X-API-Key`
-
-### Schema Features
-- Filters endpoints by tag (Site Configuration, NGINX Control, SSL Certificates, Agent Workflows)
-- Truncates descriptions to 300 characters (GPT's enforced limit)
-- Ensures all operations have unique `operationId` values
-- Respects `X-Forwarded-Proto` and `X-Forwarded-Host` headers for correct server URL detection behind reverse proxies
-
-See `docs/GPT_INTEGRATION.md` for the full setup guide.
-
-## Agent Workflows
-
-Compound operations that orchestrate multiple API calls with checkpoint-based rollback.
-
-### Available Workflows
-- **Setup Site** (`POST /workflows/setup-site`) - Create site + optional SSL in one operation (3-6 steps)
-- **Migrate Site** (`POST /workflows/migrate-site`) - Update site with auto-rollback if config validation fails (3 steps)
-
-### Features
-- Checkpoint-based rollback: steps that create transactions become rollback points
-- SSE streaming: add `?stream=true` for real-time progress events
-- Dry-run mode: add `?dry_run=true` to preview steps without executing
-- Non-critical failure handling: SSL failures during setup don't rollback the site creation
-
-See `docs/AGENT_WORKFLOWS.md` for full documentation.
-
-## Authentication & Security (Phase 5 + 6.3)
-
-Authentication is **opt-in** via `AUTH_ENABLED=true` (default: false for backward compatibility).
-
-### Auth Methods
-- **API Key**: `X-API-Key` header, SHA-256 hashed storage, key format `ngx_` + 64 hex chars
-- **JWT Token**: `Authorization: Bearer <token>` header, exchanged from API key or user login
-- **User Login**: `POST /auth/login` with username/password, returns JWT token (or 2FA challenge token)
-
-### Role Hierarchy
-- **ADMIN** (level 3): Full access including user/key management and rollback
-- **OPERATOR** (level 2): Create, update, delete sites/certs, reload NGINX
-- **VIEWER** (level 1): Read-only access
-
-### Two-Factor Authentication (Phase 6.3)
-Optional TOTP-based 2FA for password-authenticated users. API key auth is unaffected.
-
-**Two-step login flow:**
-1. `POST /auth/login` — password check. If 2FA enabled, returns a short-lived challenge token (5 min). If no 2FA, returns session JWT directly (backward compatible).
-2. `POST /auth/verify-2fa` — challenge token + TOTP code → full session JWT with `jti` claim.
-
-**2FA management endpoints** (all at `/auth/2fa`):
-- `POST /auth/2fa/enroll` — generates TOTP secret, QR code data URI, and 10 backup codes
-- `POST /auth/2fa/confirm` — verifies first TOTP code to activate 2FA
-- `POST /auth/2fa/disable` — disables 2FA (requires password confirmation)
-- `GET /auth/2fa/status` — returns 2FA state, enforcement level, backup codes remaining
-- `POST /auth/2fa/backup-codes/regenerate` — generates new backup codes (requires TOTP verification)
-
-**Enforcement**: Soft/advisory only. `TOTP_ENFORCE_ADMIN=true` and `TOTP_ENFORCE_OPERATOR=false` add warnings to login responses but never block access.
-
-**Backup codes**: 10 random 8-character alphanumeric codes, SHA-256 hashed, consumable on use. Can be used in place of TOTP codes during login.
-
-### Session Management (Phase 6.3)
-User-originated JWTs include a `jti` (JWT ID) claim tracked in the `sessions` database table. API-key-originated tokens are stateless and not tracked.
-
-- `GET /auth/sessions` — list active (non-expired, non-revoked) sessions
-- `DELETE /auth/sessions/{session_id}` — revoke a specific session
-- `DELETE /auth/sessions` — revoke all sessions except the current one
-
-The auth dependency checks session revocation on every request. Challenge tokens are rejected from normal API endpoints.
-
-### Security Features
-- Rate limiting (slowapi): 60 req/min default, keyed by IP + auth identity
-- Account lockout: 5 failed login attempts = 30 min lockout
-- Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Cache-Control
-- NGINX config injection prevention (semicolons, braces, backticks, dollar signs blocked)
-- SSRF prevention (cloud metadata endpoints blocked in proxy_pass)
-- Private key encryption at rest (Fernet, optional)
-- TOTP secret encryption at rest (Fernet, via existing EncryptionService)
-- Security warnings surfaced in `/health` endpoint
-- MCP auth: API key env var for stdio, Bearer header for HTTP transport
-
-### Bootstrap Flow
-```bash
-# 1. Set environment variables
-AUTH_ENABLED=true AUTH_MASTER_KEY=your-secret JWT_SECRET_KEY=your-jwt-secret
-
-# 2. Create first admin key
-curl -X POST http://localhost:8000/auth/bootstrap -H "X-Master-Key: your-secret"
-
-# 3. Create user account
-curl -X POST http://localhost:8000/auth/users \
-  -H "X-API-Key: ngx_..." -d '{"username":"admin","password":"SecurePass123!","role":"admin"}'
-
-# 4. Login
-curl -X POST http://localhost:8000/auth/login \
-  -d '{"username":"admin","password":"SecurePass123!"}'
-
-# 5. (Optional) Enable 2FA
-curl -X POST http://localhost:8000/auth/2fa/enroll \
-  -H "Authorization: Bearer <token>"
-# Scan QR code with authenticator app, then confirm:
-curl -X POST http://localhost:8000/auth/2fa/confirm \
-  -H "Authorization: Bearer <token>" \
-  -d '{"totp_code":"123456"}'
-```
-
-## CI/CD Pipeline (Phase 6.1)
-
-- **GitHub Actions CI** (`.github/workflows/ci.yml`): lint → test (with coverage) → Docker build on push/PR to main
-- **GitHub Actions Release** (`.github/workflows/release.yml`): builds and pushes Docker images to ghcr.io on `v*` tags
-- **Dependabot** (`.github/dependabot.yml`): pip (weekly), GitHub Actions (weekly), Docker (monthly)
-- **Pre-commit hooks** (`.pre-commit-config.yaml`): ruff check+fix, ruff format, trailing whitespace, end-of-file, YAML, large files
-- **Makefile**: `make lint`, `make format`, `make test`, `make test-cov`, `make ci`, `make dev`, `make down`
-- **Ruff config**: in `pyproject.toml` — target Python 3.12, line-length 120, select rules (E, W, F, I, N, UP, B, SIM, RUF)
-- **Test conftest** (`tests/conftest.py`): disables `AUTH_ENABLED` for unit tests so they don't require auth credentials
-- **Coverage threshold**: 45% minimum (`--cov-fail-under=45`), current: 698 tests
-- **Dependencies**: `pyotp>=2.9.0` (TOTP), `qrcode[pil]>=8.0` (QR codes) added in Phase 6.3, `highlight.js` vendored for dashboard
-
-## Web Dashboard (Phase 7)
-
-Server-rendered dashboard at `/dashboard/` using HTMX + Alpine.js + Jinja2. No SPA, no build pipeline.
-
-- **Site management**: List, detail, create, edit, enable/disable, delete — all with HTMX inline actions
-- **Monitoring pages**: System health dashboard (polled every 15s), certificate overview with expiry tracking, event log with severity/category filtering, transaction history with diff viewer and one-click rollback
-- **Config viewer**: NGINX syntax highlighting via highlight.js
-- **Dry-run validation**: Preview generated config before creating/updating sites
-- **Live status**: NGINX health indicator polled every 30s via HTMX fragment
-- **Quick actions**: Reload, restart, test config buttons with confirmation dialogs on health page
-- **Workflow UI**: Setup-site and migrate-site workflow forms with SSE real-time progress display
-- **Admin pages**: User management (CRUD) and API key management (create/revoke), admin-only gated
-- **Auth**: Cookie-based JWT when `AUTH_ENABLED=true`, permissive access when disabled. 2FA login supported via two-step flow (password → TOTP code).
-- **Dashboard URL**: `http://localhost:8000/dashboard/`
-
-### Dashboard Routes — Site Management
-- `GET /dashboard/` — redirect to site list
-- `GET /dashboard/sites` — site list page (full page or HTMX fragment)
-- `GET /dashboard/sites/new` — create site form
-- `GET /dashboard/sites/{name}` — site detail with config viewer
-- `GET /dashboard/sites/{name}/edit` — edit site form
-- `POST /dashboard/sites` — create site action
-- `PUT /dashboard/sites/{name}` — update site action
-- `POST /dashboard/sites/{name}/enable` — enable site (HTMX)
-- `POST /dashboard/sites/{name}/disable` — disable site (HTMX)
-- `DELETE /dashboard/sites/{name}` — delete site (HTMX)
-- `POST /dashboard/sites/validate` — dry-run validation (HTMX)
-
-### Dashboard Routes — Monitoring
-- `GET /dashboard/health` — system health dashboard with quick action buttons (reload, restart, test config)
-- `GET /dashboard/certificates` — certificate overview with expiry timeline
-- `GET /dashboard/events` — event log with severity/category filtering and pagination
-- `GET /dashboard/transactions` — transaction history with status/operation filtering
-- `GET /dashboard/fragments/health-cards` — health cards fragment (polled every 15s)
-- `GET /dashboard/transactions/{id}/detail` — transaction detail with diff viewer (HTMX)
-- `POST /dashboard/transactions/{id}/rollback` — one-click rollback action (HTMX)
-
-### Dashboard Routes — Quick Actions
-- `POST /dashboard/nginx/reload` — reload NGINX with confirmation (HTMX)
-- `POST /dashboard/nginx/restart` — restart NGINX container with warning (HTMX)
-- `POST /dashboard/nginx/test` — test NGINX config syntax (HTMX)
-
-### Dashboard Routes — Workflows
-- `GET /dashboard/workflows` — workflow launcher page (setup-site and migrate-site forms)
-- `POST /dashboard/workflows/{type}/execute` — execute workflow with SSE progress streaming
-
-### Dashboard Routes — Admin (admin-only)
-- `GET /dashboard/users` — user list page
-- `GET /dashboard/users/new` — create user form
-- `GET /dashboard/users/{id}/edit` — edit user form
-- `POST /dashboard/users` — create user action
-- `PUT /dashboard/users/{id}` — update user action
-- `DELETE /dashboard/users/{id}` — delete user action
-- `GET /dashboard/api-keys` — API key management page
-- `POST /dashboard/api-keys` — create API key action (shows plaintext key once)
-- `DELETE /dashboard/api-keys/{id}` — revoke API key action
-
-### Dashboard Routes — System
-- `GET /dashboard/fragments/status` — health status fragment (polled every 30s)
-- `GET/POST /dashboard/login` — login page and action (with 2FA support)
-- `POST /dashboard/login/verify-2fa` — 2FA verification during login
-- `POST /dashboard/logout` — logout action
-
 ## Current Limitations
 
-- No mypy type checking (deferred — insufficient type annotations across codebase)
-- 2FA enforcement is advisory only (soft warnings, does not block login)
+- No mypy type checking (insufficient type annotations)
+- 2FA enforcement is advisory only (soft warnings)
