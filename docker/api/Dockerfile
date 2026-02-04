@@ -4,7 +4,8 @@ FROM python:3.12-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH="/app/api"
+    PYTHONPATH="/app/api" \
+    API_PORT=8000
 
 # Set work directory  
 WORKDIR /app/api
@@ -26,12 +27,12 @@ COPY api/ ./
 # Create directory for logs and backups
 RUN mkdir -p /var/log/nginx-manager /var/backups/nginx
 
-# Expose port
-EXPOSE 8000
+# Expose port (actual port set via API_PORT env var)
+EXPOSE ${API_PORT}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:${API_PORT}/health || exit 1
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application (shell form to expand env var)
+CMD uvicorn main:app --host 0.0.0.0 --port ${API_PORT}
