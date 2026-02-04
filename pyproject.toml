@@ -17,6 +17,7 @@ dependencies = [
     "crossplane>=0.5.8",
     "pyotp>=2.9.0",
     "qrcode[pil]>=8.0",
+    "docker>=7.1.0",
 ]
 
 [project.optional-dependencies]
