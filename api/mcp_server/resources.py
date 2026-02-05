@@ -486,7 +486,7 @@ async def get_events_resource(severity: str | None = None, limit: int = 50) -> d
                     "id": event.id,
                     "timestamp": event.timestamp.isoformat() if event.timestamp else None,
                     "severity": event.severity.value if event.severity else "info",
-                    "category": event.category.value if event.category else "system",
+                    "category": event.category if event.category else "system",
                     "action": event.action,
                     "resource_type": event.resource_type,
                     "resource_id": event.resource_id,

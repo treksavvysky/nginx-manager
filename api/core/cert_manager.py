@@ -75,6 +75,7 @@ class CertManager:
         self.acme.set_account_loader(self._load_acme_account)
         self.db = get_database()
         self.cert_base_dir = Path(settings.ssl_cert_dir)
+        self.cert_nginx_dir = Path(settings.ssl_cert_nginx_path)
 
     async def _load_acme_account(self):
         """Load the most recent ACME account from the database."""
@@ -132,8 +133,12 @@ class CertManager:
             logger.info(f"Saved new ACME account {account_id} for {account.directory_url}")
 
     def _get_cert_dir(self, domain: str) -> Path:
-        """Get the certificate directory for a domain."""
+        """Get the certificate directory for a domain (host-writable path)."""
         return self.cert_base_dir / domain
+
+    def _get_cert_nginx_dir(self, domain: str) -> Path:
+        """Get the certificate directory as seen inside the NGINX container."""
+        return self.cert_nginx_dir / domain
 
     def _ensure_cert_dir(self, domain: str) -> Path:
         """Ensure certificate directory exists."""
@@ -192,7 +197,7 @@ class CertManager:
             "\n"
             "    # ACME challenge for Let's Encrypt\n"
             "    location ^~ /.well-known/acme-challenge/ {\n"
-            f"        alias {settings.acme_challenge_dir}/;\n"
+            f"        alias {settings.acme_challenge_nginx_path}/;\n"
             '        default_type "text/plain";\n'
             "        try_files $uri =404;\n"
             "    }\n"
@@ -279,7 +284,7 @@ class CertManager:
         from core.config_generator.generator import get_config_generator
 
         generator = get_config_generator()
-        acme_challenge_dir = settings.acme_challenge_dir
+        acme_challenge_dir = settings.acme_challenge_nginx_path
 
         try:
             if is_reverse_proxy and proxy_pass:
@@ -665,8 +670,12 @@ class CertManager:
             await self.db.update("certificates", cert.id, await self._certificate_to_db(cert))
 
             # Upgrade site config to SSL (HTTP redirect + HTTPS block)
+            # Use NGINX container paths for ssl_certificate directives
+            nginx_cert_dir = self._get_cert_nginx_dir(domain)
             await self._upgrade_site_to_ssl(
-                domain, ssl_cert_path=paths["fullchain_path"], ssl_key_path=paths["privkey_path"]
+                domain,
+                ssl_cert_path=str(nginx_cert_dir / "fullchain.pem"),
+                ssl_key_path=str(nginx_cert_dir / "privkey.pem"),
             )
 
             logger.info(f"Successfully obtained certificate for {domain}")

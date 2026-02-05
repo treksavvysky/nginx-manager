@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "nginx-manager": {
+      "command": "python3",
+      "args": ["mcp_server/server.py"],
+      "cwd": "/root/nginx-manager/api",
+      "env": {
+        "PYTHONPATH": "/root/nginx-manager/api",
+        "ACME_CHALLENGE_DIR": "/root/nginx-manager/data/acme-challenge",
+        "ACME_CHALLENGE_NGINX_PATH": "/var/www/.well-known/acme-challenge",
+        "SSL_CERT_DIR": "/root/nginx-manager/data/ssl/certs",
+        "SSL_CERT_NGINX_PATH": "/etc/ssl/certs"
+      }
+    }
+  }
+}

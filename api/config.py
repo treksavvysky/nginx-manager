@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # SSL Configuration
     letsencrypt_dir: str = Field(default="/etc/letsencrypt", alias="LETSENCRYPT_DIR")
     ssl_cert_dir: str = Field(default="/etc/ssl/certs", alias="SSL_CERT_DIR")
+    ssl_cert_nginx_path: str = Field(
+        default="/etc/ssl/certs",
+        alias="SSL_CERT_NGINX_PATH",
+        description="SSL cert path as seen inside the NGINX container (for ssl_certificate directive)",
+    )
 
     # ACME/Let's Encrypt Configuration
     acme_directory_url: str = Field(
@@ -70,6 +75,11 @@ class Settings(BaseSettings):
         default="/var/www/.well-known/acme-challenge",
         alias="ACME_CHALLENGE_DIR",
         description="Directory for ACME HTTP-01 challenge files",
+    )
+    acme_challenge_nginx_path: str = Field(
+        default="/var/www/.well-known/acme-challenge",
+        alias="ACME_CHALLENGE_NGINX_PATH",
+        description="ACME challenge path as seen inside the NGINX container (for alias directive)",
     )
     cert_renewal_days: int = Field(
         default=30, alias="CERT_RENEWAL_DAYS", description="Days before expiry to trigger automatic renewal"
