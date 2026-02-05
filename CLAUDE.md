@@ -40,9 +40,9 @@ uv run ruff format api/ tests/             # Format code
 ```
 
 ### API & Documentation
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-- Dashboard: http://localhost:8000/dashboard/
+- Swagger UI: http://localhost:{API_PORT}/docs (default 8000, check `.env`)
+- ReDoc: http://localhost:{API_PORT}/redoc
+- Dashboard: http://localhost:{API_PORT}/dashboard/
 
 ## Architecture
 
@@ -81,7 +81,7 @@ Client (AI Agents / REST API / Web Dashboard)
 - `workflow_engine.py` - Generic workflow execution with rollback
 
 **MCP Server (`api/mcp_server/`):**
-- `server.py` - MCP server with stdio/HTTP transport
+- `server.py` - MCP server with stdio/HTTP transport; auto-detects host vs container paths at startup
 - `resources.py` - Read-only resources (sites, certs, health)
 - `tools.py` - Executable actions (CRUD, reload, SSL)
 
@@ -104,15 +104,26 @@ Client (AI Agents / REST API / Web Dashboard)
 
 ### Directory Structure (Persistent Storage)
 ```
-├── test-configs/          → /etc/nginx/conf.d    (NGINX site configs)
-├── www/                   → /var/www             (Website content)
+├── test-configs/          → /etc/nginx/conf.d                    (NGINX site configs)
+├── www/                   → /var/www                             (Website content)
 └── data/
-    ├── ssl/               → /etc/ssl             (SSL certs & keys)
-    ├── acme-challenge/    → HTTP-01 challenges
+    ├── ssl/               → /etc/ssl                             (SSL certs & keys)
+    ├── acme-challenge/    → /var/www/.well-known/acme-challenge  (HTTP-01 challenges)
     ├── nginx-logs/        → NGINX logs
     ├── api-logs/          → API logs
     └── api-backups/       → Database & snapshots
 ```
+
+### MCP Server Path Architecture
+
+The MCP server runs on the **host** (not inside Docker). Some paths serve dual purposes: file I/O (must use host paths) and NGINX config directives (must use container paths). These are controlled by separate settings:
+
+| Purpose | Write path (host) | NGINX config path (container) |
+|---|---|---|
+| ACME challenges | `ACME_CHALLENGE_DIR` → `data/acme-challenge` | `ACME_CHALLENGE_NGINX_PATH` → `/var/www/.well-known/acme-challenge` |
+| SSL certificates | `SSL_CERT_DIR` → `data/ssl/certs` | `SSL_CERT_NGINX_PATH` → `/etc/ssl/certs` |
+
+When running inside Docker (API container), both settings default to the same container-internal path. The split only matters for the MCP server on the host — configured in `server.py`'s `__main__` block and `.mcp.json` env vars.
 
 ## Testing Patterns
 
